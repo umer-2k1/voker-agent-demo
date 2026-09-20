@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
+import { SettingsPage } from "@/pages/SettingsPage";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001";
 const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -105,7 +107,7 @@ function turnOffsetSeconds(turn: Trace["turns"][number], session: VoiceSession) 
   return Math.max(0, (new Date(turn.started_at).getTime() - new Date(session.started_at).getTime()) / 1000);
 }
 
-export function App() {
+function DashboardPage() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [sessions, setSessions] = useState<VoiceSession[]>([]);
@@ -526,6 +528,10 @@ export function App() {
       </section>
     </main>
   );
+}
+
+export function App() {
+  return <BrowserRouter><Routes><Route path="/settings" element={<SettingsPage />} /><Route path="*" element={<DashboardPage />} /></Routes></BrowserRouter>;
 }
 
 function CohortCard({

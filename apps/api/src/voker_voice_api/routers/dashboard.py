@@ -11,6 +11,7 @@ from voker_voice_api.models import (
     Error,
     Event,
     Finding,
+    FindingEvidence,
     Project,
     Span,
     UsageRecord,
@@ -207,14 +208,22 @@ def get_session_trace(
         ],
         "findings": [
             {
-                "id": str(finding.id),
-                "type": finding.type,
-                "certainty": finding.certainty,
-                "severity": finding.severity,
-                "statement": finding.statement,
-                "confidence": json_number(finding.confidence),
-                "rule_id": finding.rule_id,
-                "created_at": timestamp(finding.created_at),
+                **{
+                    "id": str(finding.id),
+                    "type": finding.type,
+                    "certainty": finding.certainty,
+                    "severity": finding.severity,
+                    "statement": finding.statement,
+                    "confidence": json_number(finding.confidence),
+                    "rule_id": finding.rule_id,
+                    "created_at": timestamp(finding.created_at),
+                },
+                "evidence": [
+                    {"entity_type": evidence.entity_type, "entity_id": str(evidence.entity_id)}
+                    for evidence in db.scalars(
+                        select(FindingEvidence).where(FindingEvidence.finding_id == finding.id)
+                    )
+                ],
             }
             for finding in findings
         ],

@@ -1,0 +1,7 @@
+<svg width="520" height="300" viewBox="0 0 520 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="1" y="1" width="518" height="298" rx="20" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <circle cx="260" cy="120" r="52" fill="#DDEAED"/>
+  <path d="M235 121C246 121 246 95 257 95C268 95 268 146 279 146C290 146 290 108 301 108" stroke="#004D43" stroke-width="7" stroke-linecap="round"/>
+  <text x="260" y="205" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="20" font-weight="600" fill="#0F172A">No significant voice-impact pattern yet</text>
+  <text x="260" y="235" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="14" fill="#64748B">More sessions are needed before showing a correlation insight.</text>
+</svg>

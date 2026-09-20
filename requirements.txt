@@ -3,3 +3,7 @@ uvicorn[standard]
 python-dotenv
 langchain
 langgraph
+langchain-openai
+langchain-mcp-adapters
+mcp
+voker

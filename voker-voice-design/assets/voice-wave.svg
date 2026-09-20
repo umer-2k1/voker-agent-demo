@@ -1,0 +1,13 @@
+<svg width="640" height="160" viewBox="0 0 640 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="160" rx="20" fill="#EAF5F3"/>
+  <g stroke="#0F7D6E" stroke-width="5" stroke-linecap="round">
+    <path d="M40 80V66"/><path d="M58 80V48"/><path d="M76 80V58"/><path d="M94 80V32"/>
+    <path d="M112 80V52"/><path d="M130 80V22"/><path d="M148 80V46"/><path d="M166 80V64"/>
+    <path d="M184 80V38"/><path d="M202 80V16"/><path d="M220 80V44"/><path d="M238 80V68"/>
+    <path d="M256 80V52"/><path d="M274 80V28"/><path d="M292 80V58"/><path d="M310 80V42"/>
+    <path d="M328 80V64"/><path d="M346 80V26"/><path d="M364 80V50"/><path d="M382 80V18"/>
+    <path d="M400 80V56"/><path d="M418 80V42"/><path d="M436 80V66"/><path d="M454 80V36"/>
+    <path d="M472 80V54"/><path d="M490 80V22"/><path d="M508 80V46"/><path d="M526 80V62"/>
+    <path d="M544 80V44"/><path d="M562 80V30"/><path d="M580 80V56"/><path d="M598 80V70"/>
+  </g>
+</svg>

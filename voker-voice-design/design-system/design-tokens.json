@@ -1,0 +1,56 @@
+{
+  "name": "Voker Voice Impact Prototype",
+  "version": "1.0.0",
+  "colors": {
+    "brand": {
+      "primary": "#004D43",
+      "primaryHover": "#003D36",
+      "primaryLight": "#DDEAED",
+      "primaryMuted": "#EAF5F3"
+    },
+    "semantic": {
+      "success": "#16A34A",
+      "warning": "#F59E0B",
+      "danger": "#EF4444",
+      "info": "#3B82F6"
+    },
+    "neutral": {
+      "950": "#0F172A",
+      "700": "#334155",
+      "500": "#64748B",
+      "300": "#CBD5E1",
+      "200": "#E2E8F0",
+      "100": "#F1F5F9",
+      "50": "#F8FAFC",
+      "0": "#FFFFFF"
+    },
+    "chart": {
+      "positive": "#0F9D7A",
+      "negative": "#EF5A67",
+      "secondary": "#3B82F6",
+      "muted": "#94A3B8"
+    }
+  },
+  "typography": {
+    "fontFamily": "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    "display": {"fontSize": 48, "lineHeight": 56, "fontWeight": 600},
+    "h1": {"fontSize": 32, "lineHeight": 40, "fontWeight": 600},
+    "h2": {"fontSize": 24, "lineHeight": 32, "fontWeight": 600},
+    "h3": {"fontSize": 20, "lineHeight": 28, "fontWeight": 600},
+    "body": {"fontSize": 16, "lineHeight": 24, "fontWeight": 400},
+    "small": {"fontSize": 14, "lineHeight": 20, "fontWeight": 400},
+    "caption": {"fontSize": 12, "lineHeight": 16, "fontWeight": 400}
+  },
+  "spacing": {"1":4,"2":8,"3":12,"4":16,"5":20,"6":24,"8":32,"10":40,"12":48,"16":64},
+  "radius": {"sm":6,"md":10,"lg":14,"xl":18,"pill":999},
+  "shadow": {
+    "card": "0 1px 2px rgba(15,23,42,.06), 0 8px 24px rgba(15,23,42,.04)",
+    "popover": "0 12px 36px rgba(15,23,42,.14)"
+  },
+  "layout": {
+    "sidebarWidth": 224,
+    "contentMaxWidth": 1440,
+    "pagePadding": 24,
+    "gridGap": 16
+  }
+}

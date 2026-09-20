@@ -1,0 +1,26 @@
+{
+  "library": "lucide-react",
+  "notes": "Use 16px icons inside controls, 18–20px in navigation, 20–24px in insight/status cards. Stroke width 1.75–2.",
+  "mapping": {
+    "dashboard": "LayoutDashboard",
+    "sessions": "MessageSquare",
+    "agents": "Bot",
+    "people": "Users",
+    "voiceImpact": "AudioLines",
+    "intent": "Target",
+    "resolution": "CircleCheck",
+    "correction": "MessageCircleWarning",
+    "escalation": "TriangleAlert",
+    "latency": "Clock3",
+    "interruption": "AudioWaveform",
+    "deadAir": "Pause",
+    "talkOver": "Mic2",
+    "play": "Play",
+    "benchmark": "Gauge",
+    "insight": "Lightbulb",
+    "filter": "SlidersHorizontal",
+    "calendar": "CalendarDays",
+    "search": "Search",
+    "export": "Download"
+  }
+}

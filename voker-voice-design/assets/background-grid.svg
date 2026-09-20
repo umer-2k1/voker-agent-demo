@@ -1,0 +1,7 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="720" fill="#F8FAFC"/>
+  <defs><pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#DDEAED" stroke-width="1"/></pattern></defs>
+  <rect width="1200" height="720" fill="url(#grid)" opacity="0.7"/>
+  <circle cx="980" cy="100" r="220" fill="#DDEAED" opacity="0.35"/>
+  <circle cx="180" cy="620" r="260" fill="#EAF5F3" opacity="0.65"/>
+</svg>

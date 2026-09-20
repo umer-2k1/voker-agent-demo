@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from voker_voice_api.analytics import CohortValue, voice_impact_cohorts
+from voker_voice_api.analytics import CohortValue, latency_distribution, voice_impact_cohorts
 from voker_voice_api.config import get_settings
 from voker_voice_api.database import get_db
 from voker_voice_api.models import (
@@ -206,6 +206,16 @@ def analytics_overview(project_slug: str, db: Session = Depends(get_db)) -> dict
                 stt_duration_ms=max(stt_durations) if stt_durations else None,
             )
         )
+    spans_by_kind: dict[str, list[float]] = {"stt": [], "llm": [], "tool": [], "tts": []}
+    if sessions:
+        spans = db.scalars(
+            select(Span).where(
+                Span.session_id.in_(events_by_session), Span.duration_ms.is_not(None)
+            )
+        ).all()
+        for span in spans:
+            if span.kind in spans_by_kind:
+                spans_by_kind[span.kind].append(float(span.duration_ms))
     return {
         "session_count": len(sessions),
         "completed_session_count": len(completed),
@@ -218,6 +228,7 @@ def analytics_overview(project_slug: str, db: Session = Depends(get_db)) -> dict
             "estimated_record_count": sum(1 for item in costs if item.is_estimate),
         },
         "voice_impact_cohorts": voice_impact_cohorts(cohort_values),
+        "latency": {kind: latency_distribution(values) for kind, values in spans_by_kind.items()},
     }
 
 

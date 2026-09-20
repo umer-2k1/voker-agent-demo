@@ -46,3 +46,22 @@ def voice_impact_cohorts(values: Iterable[CohortValue]) -> dict[str, dict[str, i
             if value.stt_duration_ms is not None and value.stt_duration_ms <= 500
         ),
     }
+
+
+def latency_distribution(values: Iterable[float]) -> dict[str, float | int] | None:
+    """Return transparent percentile summary values without inventing missing latency."""
+
+    ordered = sorted(values)
+    if not ordered:
+        return None
+
+    def percentile(percent: float) -> float:
+        index = round((len(ordered) - 1) * percent)
+        return ordered[index]
+
+    return {
+        "sample_size": len(ordered),
+        "p50_ms": percentile(0.5),
+        "p95_ms": percentile(0.95),
+        "max_ms": ordered[-1],
+    }

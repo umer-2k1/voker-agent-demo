@@ -26,6 +26,10 @@ type Analytics = {
     string,
     { sample_size: number; resolved: number; resolution_rate: number } | null
   >;
+  latency: Record<
+    string,
+    { sample_size: number; p50_ms: number; p95_ms: number; max_ms: number } | null
+  >;
 };
 type VoiceSession = {
   id: string;
@@ -343,6 +347,12 @@ export function App() {
           <CohortCard label="Slow STT" cohort={analytics?.voice_impact_cohorts.slow_stt ?? null} />
           <CohortCard label="Fast STT" cohort={analytics?.voice_impact_cohorts.fast_stt ?? null} />
         </section>
+        <section className="cohort-grid" aria-label="Stage latency percentiles">
+          <LatencyCard label="STT latency" value={analytics?.latency.stt ?? null} />
+          <LatencyCard label="LLM latency" value={analytics?.latency.llm ?? null} />
+          <LatencyCard label="Tool latency" value={analytics?.latency.tool ?? null} />
+          <LatencyCard label="TTS latency" value={analytics?.latency.tts ?? null} />
+        </section>
         <section className="workspace-grid">
           <Card className="panel sessions-panel" id="sessions">
             <CardHeader className="panel-heading">
@@ -537,6 +547,31 @@ function CohortCard({
         <>
           <strong>Insufficient evidence</strong>
           <span>At least 5 observed sessions required</span>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function LatencyCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: { sample_size: number; p50_ms: number; p95_ms: number } | null;
+}) {
+  return (
+    <Card className="cohort-card">
+      <p>{label}</p>
+      {value ? (
+        <>
+          <strong>p50 {formatLatency(value.p50_ms)}</strong>
+          <span>p95 {formatLatency(value.p95_ms)} · {value.sample_size} observed spans</span>
+        </>
+      ) : (
+        <>
+          <strong>No observed latency</strong>
+          <span>Missing spans are not treated as zero</span>
         </>
       )}
     </Card>

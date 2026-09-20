@@ -42,6 +42,7 @@ class User(Timestamped, Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(255))
+    google_subject: Mapped[str | None] = mapped_column(String(255), unique=True)
     password_hash: Mapped[str | None] = mapped_column(String(255))
 
 

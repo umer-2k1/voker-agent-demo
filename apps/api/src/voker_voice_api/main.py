@@ -3,10 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.middleware.sessions import SessionMiddleware
 
 from voker_voice_api.config import get_settings
 from voker_voice_api.database import get_db
 from voker_voice_api.models import Job
+from voker_voice_api.routers.account import router as account_router
 from voker_voice_api.routers.dashboard import router as dashboard_router
 from voker_voice_api.routers.ingest import router as ingest_router
 
@@ -14,6 +16,13 @@ from voker_voice_api.routers.ingest import router as ingest_router
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name, version="0.1.0")
+    if settings.session_secret:
+        app.add_middleware(
+            SessionMiddleware,
+            secret_key=settings.session_secret,
+            https_only=settings.app_env != "development",
+            same_site="lax",
+        )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -21,6 +30,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(ingest_router)
+    app.include_router(account_router)
     app.include_router(dashboard_router)
 
     @app.get("/health", tags=["system"])

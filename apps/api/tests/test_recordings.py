@@ -8,6 +8,7 @@ from voker_voice_api.database import get_db
 from voker_voice_api.main import app
 from voker_voice_api.models import Recording
 from voker_voice_api.recordings import cloudinary_playback_url
+from voker_voice_api.routers.account import require_dashboard_user
 from voker_voice_api.worker import expire_recordings
 
 
@@ -52,6 +53,7 @@ def test_playback_redirects_only_available_cloudinary_recordings(monkeypatch) ->
     project.id = "project-id"
     db.scalar.side_effect = [project, recording]
     app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[require_dashboard_user] = MagicMock()
     monkeypatch.setattr(
         "voker_voice_api.routers.dashboard.cloudinary_playback_url",
         lambda recording, settings: "https://example.test/private-audio",

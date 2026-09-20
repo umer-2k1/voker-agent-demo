@@ -27,6 +27,14 @@ postgresql+psycopg://voker:voker_dev@localhost:5432/voker_voice
 
 Set a different `DATABASE_URL` only for an alternate local or hosted database. Do not put secrets into this document.
 
+The ignored root `.env` is the active configuration source. When it provides `DATABASE_URL`, it takes precedence over the local Compose default. The configured development database is migrated and seeded with:
+
+```bash
+source venv/bin/activate
+alembic -c apps/api/alembic.ini upgrade head
+voker-voice-api seed
+```
+
 ## Run
 
 ```bash

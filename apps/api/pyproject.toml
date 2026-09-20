@@ -25,5 +25,8 @@ dev = [
   "ruff>=0.8,<1",
 ]
 
+[project.scripts]
+voker-voice-api = "voker_voice_api.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]

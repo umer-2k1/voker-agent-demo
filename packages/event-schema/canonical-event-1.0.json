@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voker.ai/schemas/voice/canonical-event-1.0.json",
+  "title": "Voker Voice Canonical Event 1.0",
+  "type": "object",
+  "required": ["event_id", "event_type", "occurred_at", "external_session_id", "trace_id"],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^1\\.[0-9]+$" },
+    "event_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "event_type": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "external_session_id": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "trace_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "status": { "enum": ["unset", "ok", "error", "cancelled", "timeout"] }
+  },
+  "additionalProperties": true
+}

@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from voker_voice_api.config import get_settings
-from voker_voice_api.models import Event, Finding, FindingEvidence
+from voker_voice_api.models import AnalysisRun, Event, Finding, FindingEvidence
 from voker_voice_api.models import Session as VoiceSession
 
 
@@ -28,10 +28,20 @@ class SemanticResult(BaseModel):
 
 def evaluate_session(db: Session, *, session_id: uuid.UUID) -> int:
     settings = get_settings()
-    if not settings.openrouter_api_key or not settings.openrouter_model:
-        return 0
     session = db.get(VoiceSession, session_id)
     if session is None:
+        return 0
+    evaluator_enabled = bool(settings.openrouter_api_key and settings.openrouter_model)
+    analysis_run = AnalysisRun(
+        session_id=session.id,
+        status="running" if evaluator_enabled else "disabled",
+        prompt_version="semantic-v1",
+        model=settings.openrouter_model,
+    )
+    db.add(analysis_run)
+    db.flush()
+    if not evaluator_enabled:
+        analysis_run.result = {"reason": "OpenRouter evaluator is not configured"}
         return 0
     events = list(
         db.scalars(select(Event).where(Event.session_id == session.id).order_by(Event.occurred_at))
@@ -74,6 +84,7 @@ def evaluate_session(db: Session, *, session_id: uuid.UUID) -> int:
             continue
         finding = Finding(
             session_id=session.id,
+            analysis_run_id=analysis_run.id,
             type="semantic_failure_analysis",
             certainty="inferred",
             severity=candidate.severity,
@@ -92,4 +103,10 @@ def evaluate_session(db: Session, *, session_id: uuid.UUID) -> int:
                 )
             )
         created += 1
+    analysis_run.status = "completed"
+    analysis_run.result = {
+        "outcome": result.outcome,
+        "summary": result.summary,
+        "findings_created": created,
+    }
     return created

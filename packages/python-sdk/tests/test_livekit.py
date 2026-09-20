@@ -18,3 +18,7 @@ def test_livekit_observer_uses_public_events() -> None:
         fake.handlers["agent_false_interruption"]({"reason": "barge-in"})
     assert any(event["event_type"] == "stt.completed" for event in sink.events)
     assert any(event["event_type"] == "voice.interruption" for event in sink.events)
+    stt_event = next(event for event in sink.events if event["event_type"] == "stt.completed")
+    assert stt_event["attributes"]["transcript"] == "hello"
+    assert stt_event["input"] == {"text": "hello"}
+    assert "tts_playback_finished" in fake.handlers

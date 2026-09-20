@@ -41,6 +41,14 @@ class VokerLangGraphCallback(BaseCallbackHandler):
             attributes={"name": name, "framework": "langgraph", "run_id": str(run_id)},
             input=inputs,
         )
+        if parent_run_id in self._runs:
+            parent_name = self._runs[parent_run_id][3]
+            if parent_name != name:
+                self.session.handoff(
+                    from_agent=parent_name,
+                    to_agent=name,
+                    reason="LangGraph graph transition",
+                )
 
     def on_chain_end(self, outputs: dict[str, Any], *, run_id: uuid.UUID, **_: Any) -> None:
         run = self._runs.pop(run_id, None)
@@ -70,6 +78,26 @@ class VokerLangGraphCallback(BaseCallbackHandler):
             attributes={"name": name, "framework": "langgraph", "run_id": str(run_id)},
             error=self.session._error_payload(error),
             duration_ms=(time.monotonic() - started) * 1000,
+        )
+
+    def on_retry(self, retry_state: Any, *, run_id: uuid.UUID, **_: Any) -> None:
+        """Record callback retries without changing LangGraph retry behavior."""
+
+        run = self._runs.get(run_id)
+        if run is None:
+            return
+        span_id, parent_span_id, _, name = run
+        self.session.emit(
+            "graph.node.retry",
+            status="ok",
+            span_id=span_id,
+            parent_span_id=parent_span_id,
+            attributes={
+                "name": name,
+                "framework": "langgraph",
+                "run_id": str(run_id),
+                "retry_state": str(retry_state),
+            },
         )
 
 

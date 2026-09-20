@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from voker_voice_api.models import (
     AnalysisRun,
     Error,
+    Event,
     Finding,
     FindingEvidence,
     Span,
@@ -20,6 +21,7 @@ from voker_voice_api.models import (
 from voker_voice_api.models import Session as VoiceSession
 
 RULE_VERSION = "1"
+LATENCY_THRESHOLDS_MS = {"stt": 1200, "llm": 3000, "tool": 5000, "tts": 2000}
 
 
 @dataclass(frozen=True)
@@ -49,18 +51,61 @@ def deterministic_finding_specs(errors: list[Error], spans: list[Span]) -> list[
             )
         )
     for span in spans:
-        if span.status not in {"timeout", "cancelled"}:
-            continue
-        specs.append(
-            FindingSpec(
-                rule_id=f"terminal-span:{span.id}",
-                finding_type="timeout" if span.status == "timeout" else "cancelled_execution",
-                severity="high" if span.status == "timeout" else "medium",
-                statement=f"{span.kind} span '{span.name}' ended with status {span.status}.",
-                entity_type="span",
-                entity_id=span.id,
+        if span.status in {"timeout", "cancelled"}:
+            specs.append(
+                FindingSpec(
+                    rule_id=f"terminal-span:{span.id}",
+                    finding_type="timeout" if span.status == "timeout" else "cancelled_execution",
+                    severity="high" if span.status == "timeout" else "medium",
+                    statement=f"{span.kind} span '{span.name}' ended with status {span.status}.",
+                    entity_type="span",
+                    entity_id=span.id,
+                )
             )
+        threshold = LATENCY_THRESHOLDS_MS.get(span.kind)
+        exceeds_threshold = (
+            threshold is not None
+            and span.duration_ms is not None
+            and float(span.duration_ms) > threshold
         )
+        if exceeds_threshold:
+            specs.append(
+                FindingSpec(
+                    rule_id=f"slow-span:{span.id}",
+                    finding_type="latency_threshold_exceeded",
+                    severity="medium",
+                    statement=(
+                        f"{span.kind} span '{span.name}' took {float(span.duration_ms):.0f} ms, "
+                        f"above the {threshold} ms threshold."
+                    ),
+                    entity_type="span",
+                    entity_id=span.id,
+                )
+            )
+    return specs
+
+
+def event_finding_specs(events: list[Event]) -> list[FindingSpec]:
+    """Produce bounded, evidence-linked voice-condition findings from canonical events."""
+
+    specs: list[FindingSpec] = []
+    for event_type, minimum, label in (
+        ("voice.interruption", 3, "interruptions"),
+        ("voice.talk_over", 2, "talk-over events"),
+    ):
+        matching = [event for event in events if event.event_type == event_type]
+        if len(matching) >= minimum:
+            evidence = matching[-1]
+            specs.append(
+                FindingSpec(
+                    rule_id=f"{event_type}:count:{len(matching)}",
+                    finding_type=event_type.removeprefix("voice."),
+                    severity="medium",
+                    statement=f"{len(matching)} {label} were observed (threshold: {minimum}).",
+                    entity_type="event",
+                    entity_id=evidence.id,
+                )
+            )
     return specs
 
 
@@ -80,8 +125,9 @@ def run_deterministic_analysis(db: Session, *, session_id: uuid.UUID) -> int:
 
     errors = list(db.scalars(select(Error).where(Error.session_id == session.id)))
     spans = list(db.scalars(select(Span).where(Span.session_id == session.id)))
+    events = list(db.scalars(select(Event).where(Event.session_id == session.id)))
     created = 0
-    for spec in deterministic_finding_specs(errors, spans):
+    for spec in [*deterministic_finding_specs(errors, spans), *event_finding_specs(events)]:
         exists = db.scalar(
             select(Finding.id).where(
                 Finding.session_id == session.id,

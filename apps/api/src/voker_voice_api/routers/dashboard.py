@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from voker_voice_api.models import (
     FindingEvidence,
     Project,
     Span,
+    Turn,
     UsageRecord,
 )
 from voker_voice_api.models import (
@@ -100,14 +101,28 @@ def project_overview(project_slug: str, db: Session = Depends(get_db)) -> dict[s
 
 @router.get("/projects/{project_slug}/sessions")
 def list_sessions(
-    project_slug: str, limit: int = 30, db: Session = Depends(get_db)
-) -> dict[str, list[dict[str, Any]]]:
+    project_slug: str,
+    limit: int = Query(default=30, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    status: str | None = None,
+    source: str | None = None,
+    search: str | None = Query(default=None, max_length=255),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
     project = project_for_slug(db, project_slug)
-    limit = max(1, min(limit, 100))
+    conditions = [VoiceSession.project_id == project.id]
+    if status:
+        conditions.append(VoiceSession.status == status)
+    if source:
+        conditions.append(VoiceSession.source == source)
+    if search:
+        conditions.append(VoiceSession.external_session_id.ilike(f"%{search}%"))
+    total = db.scalar(select(func.count()).select_from(VoiceSession).where(*conditions)) or 0
     sessions = db.scalars(
         select(VoiceSession)
-        .where(VoiceSession.project_id == project.id)
-        .order_by(VoiceSession.started_at.desc())
+        .where(*conditions)
+        .order_by(VoiceSession.started_at.desc(), VoiceSession.id.desc())
+        .offset(offset)
         .limit(limit)
     ).all()
     items = []
@@ -121,7 +136,7 @@ def list_sessions(
             or 0
         )
         items.append(session_summary(session, error_count, event_count))
-    return {"items": items}
+    return {"items": items, "page": {"offset": offset, "limit": limit, "total": total}}
 
 
 @router.get("/projects/{project_slug}/sessions/{session_id}")
@@ -151,6 +166,9 @@ def get_session_trace(
     findings = db.scalars(
         select(Finding).where(Finding.session_id == session.id).order_by(Finding.created_at.desc())
     ).all()
+    turns = db.scalars(
+        select(Turn).where(Turn.session_id == session.id).order_by(Turn.sequence, Turn.id)
+    ).all()
     return {
         "session": session_summary(session, len(errors), len(events)),
         "events": [
@@ -164,6 +182,19 @@ def get_session_trace(
                 "payload": event.payload,
             }
             for event in events
+        ],
+        "turns": [
+            {
+                "id": str(turn.id),
+                "external_turn_id": turn.external_turn_id,
+                "sequence": turn.sequence,
+                "speaker": turn.speaker,
+                "started_at": timestamp(turn.started_at),
+                "ended_at": timestamp(turn.ended_at),
+                "transcript": turn.transcript,
+                "attributes": turn.attributes,
+            }
+            for turn in turns
         ],
         "spans": [
             {

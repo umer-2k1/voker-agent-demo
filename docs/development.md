@@ -49,6 +49,11 @@ uvicorn voker_voice_api.main:app --app-dir apps/api/src --reload --port 8001
 pnpm dev:web
 ```
 
+For authenticated live trace refresh in the local dashboard, set `VITE_INGEST_KEY`
+in the ignored root `.env` to a locally created ingest key. It is optional: the
+dashboard remains usable without it, but in-progress traces will refresh only on
+manual navigation.
+
 ## Validate
 
 ```bash

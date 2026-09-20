@@ -107,6 +107,21 @@ def upsert_turn(db: Session, session: VoiceSession, event: CanonicalEvent) -> Tu
         )
         db.add(turn)
         db.flush()
+    speaker = event.attributes.get("speaker")
+    transcript = event.attributes.get("transcript")
+    if not isinstance(transcript, str):
+        candidate = event.input if event.event_type.startswith(("user.", "stt.")) else event.output
+        transcript = candidate.get("text") if isinstance(candidate, dict) else None
+    if isinstance(speaker, str) and speaker:
+        turn.speaker = speaker[:32]
+    elif event.event_type.startswith(("user.", "stt.")):
+        turn.speaker = "user"
+    elif event.event_type.startswith(("agent.", "assistant.", "tts.")):
+        turn.speaker = "agent"
+    if isinstance(transcript, str) and transcript:
+        turn.transcript = transcript
+    if event.event_type.endswith((".completed", ".ended")):
+        turn.ended_at = event.occurred_at
     return turn
 
 

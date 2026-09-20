@@ -25,10 +25,10 @@ implemented, verified locally, and committed to `main`; an unchecked item remain
 | 1 — Schema | Complete | PostgreSQL schema, Alembic migrations, canonical JSON/Pydantic contract. |
 | 2 — Ingestion | Complete vertical slice | API-key auth, gzip batches, idempotency, out-of-order span repair, durable PostgreSQL jobs and SSE broker. |
 | 3 — Python SDK | Complete vertical slice | Fail-open queued exporter, redaction, nested spans, tools/MCP and handoffs. |
-| 4 — Trace dashboard | In progress | PostgreSQL query API and real dashboard are complete; live SSE, transcript/raw inspector, filters and pagination remain. |
-| 5 — LiveKit | In progress | Public AgentSession observer and isolated event test complete; hosted voice E2E remains. |
-| 6 — LangGraph | In progress | Public callback graph-node tracing test complete; handoff/retry/interrupt/parallel cases remain. |
-| 7 — Intelligence | In progress | Deterministic evidence-linked worker and evidence-validated OpenRouter evaluator are implemented; live semantic E2E and richer rules remain. |
+| 4 — Trace dashboard | Complete | Live trace refresh, transcript projection, normalized-event inspector, bounded session queries, filters, and pagination are implemented. |
+| 5 — LiveKit | In progress | Public AgentSession observer maps lifecycle, transcript, interruption, talk-over, metrics, and playback events with regression coverage; hosted voice E2E remains. |
+| 6 — LangGraph | In progress | Public callback graph-node tracing, graph-transition handoffs, and retry signals are covered; interrupt/resume and parallel execution cases remain. |
+| 7 — Intelligence | In progress | Deterministic evidence-linked worker now covers errors, cancellation/timeouts, slow stages, interruptions, and talk-over; evidence-validated OpenRouter evaluator is implemented, while live semantic E2E and controlled re-analysis remain. |
 | 8 — Vapi | In progress | Payload normalizer and canonical error mapping implemented; authenticated webhook route/E2E remains. |
 | 9 — Retell | In progress | Payload normalizer and canonical error mapping implemented; authenticated webhook route/E2E remains. |
 | 10–12 | Not started | Analytics/costs, recordings, and private-beta hardening remain. |

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -67,6 +67,13 @@ type Trace = {
     prompt_version: string;
     model: string | null;
   }>;
+  recordings: Array<{
+    id: string;
+    source: string;
+    duration_ms: number | null;
+    media_type: string | null;
+    status: string;
+  }>;
 };
 
 type SessionPage = { offset: number; limit: number; total: number };
@@ -90,6 +97,9 @@ function formatCost(value: number | null, currency: string | null) {
 function formatRate(value: number) {
   return `${Math.round(value * 100)}%`;
 }
+function turnOffsetSeconds(turn: Trace["turns"][number], session: VoiceSession) {
+  return Math.max(0, (new Date(turn.started_at).getTime() - new Date(session.started_at).getTime()) / 1000);
+}
 
 export function App() {
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -104,6 +114,9 @@ export function App() {
   const [search, setSearch] = useState("");
   const [showRaw, setShowRaw] = useState(false);
   const [traceFilter, setTraceFilter] = useState<"all" | "agent" | "handoff">("all");
+  const [activeRecordingId, setActiveRecordingId] = useState<string | null>(null);
+  const [playheadSeconds, setPlayheadSeconds] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   async function loadTrace(sessionId: string, active = true) {
     try {
@@ -112,7 +125,15 @@ export function App() {
       );
       if (!response.ok) throw new Error("Unable to load this session trace.");
       const payload = (await response.json()) as Trace;
-      if (active) setTrace(payload);
+      if (active) {
+        setTrace(payload);
+        setActiveRecordingId((current) =>
+          payload.recordings.some((recording) => recording.id === current && recording.status === "available")
+            ? current
+            : (payload.recordings.find((recording) => recording.status === "available")?.id ?? null),
+        );
+        setPlayheadSeconds(0);
+      }
     } catch (caught) {
       if (active)
         setError(
@@ -219,6 +240,15 @@ export function App() {
     if (traceFilter === "handoff") return event.event_type === "agent.handoff";
     return event.event_type.startsWith("agent.") || event.event_type.startsWith("graph.");
   });
+  const activeRecording = trace?.recordings.find((recording) => recording.id === activeRecordingId);
+
+  function seekToTurn(turn: Trace["turns"][number]) {
+    if (!trace || !audioRef.current || !activeRecording) return;
+    const offset = turnOffsetSeconds(turn, trace.session);
+    audioRef.current.currentTime = offset;
+    setPlayheadSeconds(offset);
+    void audioRef.current.play();
+  }
 
 
   return (
@@ -385,7 +415,29 @@ export function App() {
               <>
                 <section className="transcript-panel" aria-label="Transcript">
                   <p className="eyebrow">Transcript</p>
-                  {trace.turns.length ? trace.turns.map((turn) => <div className="transcript-turn" key={turn.id}><b>{turn.speaker}</b><span>{turn.transcript ?? "No transcript captured"}</span></div>) : <p className="analysis-pending">No transcript was captured for this trace.</p>}
+                  {activeRecording ? (
+                    <div className="recording-player">
+                      <div>
+                        <b>Call recording</b>
+                        <small>{activeRecording.source} · {formatLatency(activeRecording.duration_ms)}</small>
+                      </div>
+                      <audio
+                        controls
+                        onTimeUpdate={(event) => setPlayheadSeconds(event.currentTarget.currentTime)}
+                        preload="metadata"
+                        ref={audioRef}
+                        src={`${apiBaseUrl}/api/projects/${projectSlug}/sessions/${trace.session.id}/recordings/${activeRecording.id}/playback`}
+                      />
+                    </div>
+                  ) : trace.recordings.length ? (
+                    <p className="analysis-pending">Recording {trace.recordings[0].status}; playback is unavailable.</p>
+                  ) : null}
+                  {trace.turns.length ? trace.turns.map((turn, index) => {
+                    const offset = turnOffsetSeconds(turn, trace.session);
+                    const nextTurn = trace.turns[index + 1];
+                    const isActive = activeRecording && playheadSeconds >= offset && (!nextTurn || playheadSeconds < turnOffsetSeconds(nextTurn, trace.session));
+                    return <button className={`transcript-turn ${isActive ? "playing" : ""}`} disabled={!activeRecording} key={turn.id} onClick={() => seekToTurn(turn)}><b>{turn.speaker} · {formatLatency(offset * 1000)}</b><span>{turn.transcript ?? "No transcript captured"}</span></button>;
+                  }) : <p className="analysis-pending">No transcript was captured for this trace.</p>}
                 </section>
                 <div className="finding-list">
                   {trace.findings.length ? (

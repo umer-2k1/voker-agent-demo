@@ -29,9 +29,12 @@ from voker_voice_api.models import (
     Session as VoiceSession,
 )
 from voker_voice_api.recordings import cloudinary_playback_url
+from voker_voice_api.routers.account import require_dashboard_user
 from voker_voice_api.security import generate_webhook_token
 
-router = APIRouter(prefix="/api", tags=["dashboard"])
+router = APIRouter(
+    prefix="/api", tags=["dashboard"], dependencies=[Depends(require_dashboard_user)]
+)
 
 
 def timestamp(value: datetime | None) -> str | None:

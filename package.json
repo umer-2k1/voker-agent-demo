@@ -8,5 +8,8 @@
     "test:web": "pnpm --filter @voker-voice/web test",
     "lint:web": "pnpm --filter @voker-voice/web lint",
     "format:check:web": "pnpm --filter @voker-voice/web format:check"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
   }
 }

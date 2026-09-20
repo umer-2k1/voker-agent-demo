@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { AccountPage } from "@/pages/AccountPage";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001";
 const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -278,6 +279,8 @@ function DashboardPage() {
           <a className="nav-item" href="#insights">
             Intelligence
           </a>
+          <Link className="nav-item" to="/settings">Project settings</Link>
+          <Link className="nav-item" to="/account">Account</Link>
         </nav>
         <div className="sidebar-foot">
           {overview?.project.name ?? "Voker Voice"}
@@ -531,7 +534,7 @@ function DashboardPage() {
 }
 
 export function App() {
-  return <BrowserRouter><Routes><Route path="/settings" element={<SettingsPage />} /><Route path="*" element={<DashboardPage />} /></Routes></BrowserRouter>;
+  return <BrowserRouter><Routes><Route path="/settings" element={<SettingsPage />} /><Route path="/account" element={<AccountPage />} /><Route path="*" element={<DashboardPage />} /></Routes></BrowserRouter>;
 }
 
 function CohortCard({

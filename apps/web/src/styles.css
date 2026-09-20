@@ -150,6 +150,8 @@ h2 {
 .key-form button, .key-row button { background: #004d43; border: 0; border-radius: 8px; color: white; cursor: pointer; padding: 10px 12px; }
 .revealed-key { background: #fff7e9; border: 1px solid #f0cc87; overflow-wrap: anywhere; padding: 14px; }
 .key-list { border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+.account-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; display: grid; gap: 8px; padding: 20px; }
+.account-card span { color: #64748b; }.account-card button { justify-self: start; margin-top: 8px; }.settings-link { color: #004d43; display: inline-block; font-weight: 700; margin-top: 20px; }
 .key-row { align-items: center; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; padding: 14px; }
 .key-row:last-child { border-bottom: 0; }.key-row small { color: #64748b; display: block; margin-top: 4px; }.key-row em { color: #64748b; font-size: 13px; }.skeleton-list i { background: #eaf5f3; border-radius: 8px; display: block; height: 55px; margin: 8px 0; }
 .metric-grid {

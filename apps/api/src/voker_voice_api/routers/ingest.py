@@ -4,7 +4,7 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from voker_voice_api.auth import authenticate_ingest_key, raw_ingest_key, require_ingest_context
 from voker_voice_api.config import get_settings
+from voker_voice_api.connectors import normalize_retell, normalize_vapi
 from voker_voice_api.database import get_db
 from voker_voice_api.ingestion import (
     IngestContext,
@@ -83,6 +84,42 @@ async def create_event_batch(
             event = CanonicalEvent.model_validate(raw_event)
             await broker.publish(event.external_session_id, sse_payload(event))
     return response
+
+
+async def ingest_webhook(
+    request: Request,
+    provider: str,
+    delivery_id: str,
+    db: Session,
+) -> EventBatchResponse:
+    raw = await decode_json_body(request)
+    context = authenticate_ingest_key(raw_ingest_key(request), db)
+    events = (
+        normalize_vapi(raw, delivery_id)
+        if provider == "vapi"
+        else normalize_retell(raw, delivery_id)
+    )
+    response = ingest_batch(db, context, events)
+    db.commit()
+    return response
+
+
+@router.post("/webhooks/vapi", response_model=EventBatchResponse)
+async def receive_vapi_webhook(
+    request: Request,
+    x_provider_delivery_id: str = Header(min_length=1),
+    db: Session = Depends(get_db),
+) -> EventBatchResponse:
+    return await ingest_webhook(request, "vapi", x_provider_delivery_id, db)
+
+
+@router.post("/webhooks/retell", response_model=EventBatchResponse)
+async def receive_retell_webhook(
+    request: Request,
+    x_provider_delivery_id: str = Header(min_length=1),
+    db: Session = Depends(get_db),
+) -> EventBatchResponse:
+    return await ingest_webhook(request, "retell", x_provider_delivery_id, db)
 
 
 @router.post("/sessions", status_code=status.HTTP_201_CREATED)

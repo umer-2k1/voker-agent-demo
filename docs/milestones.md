@@ -31,7 +31,8 @@ implemented, verified locally, and committed to `main`; an unchecked item remain
 | 7 — Intelligence | In progress | Deterministic evidence-linked worker covers errors, cancellation/timeouts, slow stages, interruptions, and talk-over; the evaluator records immutable completed/disabled runs, and the dashboard exposes analysis history plus controlled re-analysis. Live semantic E2E remains. |
 | 8 — Vapi | In progress | Payload normalizer, canonical error mapping, one-time integration token setup, authenticated integration-specific webhook intake, durable receipts, duplicate protection, and deferred normalization are implemented; provider E2E remains. |
 | 9 — Retell | In progress | Payload normalizer, canonical error mapping, one-time integration token setup, authenticated integration-specific webhook intake, durable receipts, duplicate protection, and deferred normalization are implemented; provider E2E remains. |
-| 10–12 | Not started | Analytics/costs, recordings, and private-beta hardening remain. |
+| 10 — Analytics/costs | In progress | Versioned rate-card estimates materialize cost records during ingestion; project outcome/source/cost aggregates and dashboard cost display are implemented. Cohorts and latency analytics remain. |
+| 11–12 | Not started | Recordings and private-beta hardening remain. |
 
 Latest verified commit checkpoints include `64c93c2` (semantic evaluator), `c5fa954`
 (finding evidence in trace API), and `ea2df73` (Vapi/Retell normalization).

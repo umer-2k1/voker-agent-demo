@@ -6,10 +6,12 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from voker_voice_api.costs import estimate_llm_cost_micros
 from voker_voice_api.models import (
     Agent,
     AgentRun,
     APIKey,
+    CostRecord,
     Error,
     Event,
     Job,
@@ -292,6 +294,24 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
                 attributes={},
             )
         )
+        estimate = estimate_llm_cost_micros(
+            provider=event.usage.provider,
+            model=event.usage.model,
+            input_tokens=event.usage.input_tokens,
+            output_tokens=event.usage.output_tokens,
+        )
+        if estimate is not None:
+            amount_micros, rate_card = estimate
+            db.add(
+                CostRecord(
+                    session_id=session.id,
+                    span_id=span.id if span else None,
+                    amount_micros=amount_micros,
+                    source="estimate",
+                    rate_card_version=rate_card.version,
+                    is_estimate=True,
+                )
+            )
     if event.event_type == "session.ended":
         session.status = "completed"
         session.ended_at = event.occurred_at

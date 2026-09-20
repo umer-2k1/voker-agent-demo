@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from voker_voice_api.database import get_db
 from voker_voice_api.models import (
     AnalysisRun,
+    CostRecord,
     Error,
     Event,
     Finding,
@@ -149,6 +150,44 @@ def project_overview(project_slug: str, db: Session = Depends(get_db)) -> dict[s
             "active_sessions": active_sessions,
             "error_count": errors,
             "average_span_duration_ms": avg_duration,
+        },
+    }
+
+
+@router.get("/projects/{project_slug}/analytics/overview")
+def analytics_overview(project_slug: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Bounded project aggregates that retain unknown costs/metrics as unknown."""
+
+    project = project_for_slug(db, project_slug)
+    sessions = list(
+        db.scalars(
+            select(VoiceSession).where(VoiceSession.project_id == project.id)
+        )
+    )
+    completed = [item for item in sessions if item.status == "completed"]
+    outcome_counts: dict[str, int] = {}
+    source_counts: dict[str, int] = {}
+    for item in sessions:
+        source_counts[item.source] = source_counts.get(item.source, 0) + 1
+        if item.outcome:
+            outcome_counts[item.outcome] = outcome_counts.get(item.outcome, 0) + 1
+    costs = list(
+        db.scalars(
+            select(CostRecord)
+            .join(VoiceSession, CostRecord.session_id == VoiceSession.id)
+            .where(VoiceSession.project_id == project.id)
+        )
+    )
+    return {
+        "session_count": len(sessions),
+        "completed_session_count": len(completed),
+        "outcomes": outcome_counts,
+        "sources": source_counts,
+        "cost": {
+            "amount_micros": sum(item.amount_micros for item in costs) if costs else None,
+            "currency": "USD" if costs else None,
+            "record_count": len(costs),
+            "estimated_record_count": sum(1 for item in costs if item.is_estimate),
         },
     }
 

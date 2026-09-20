@@ -16,6 +16,13 @@ type Overview = {
     average_span_duration_ms: number | null;
   };
 };
+type Analytics = {
+  session_count: number;
+  completed_session_count: number;
+  outcomes: Record<string, number>;
+  sources: Record<string, number>;
+  cost: { amount_micros: number | null; currency: string | null; record_count: number };
+};
 type VoiceSession = {
   id: string;
   external_session_id: string;
@@ -73,9 +80,13 @@ function formatDate(value: string) {
     minute: "2-digit",
   }).format(new Date(value));
 }
+function formatCost(value: number | null, currency: string | null) {
+  return value === null ? "Unknown" : `${currency ?? "USD"} ${(value / 1_000_000).toFixed(4)}`;
+}
 
 export function App() {
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [sessions, setSessions] = useState<VoiceSession[]>([]);
   const [page, setPage] = useState<SessionPage>({ offset: 0, limit: 30, total: 0 });
   const [trace, setTrace] = useState<Trace | null>(null);
@@ -139,15 +150,18 @@ export function App() {
     let active = true;
     async function loadDashboard() {
       try {
-        const [overviewResponse, nextSessions] = await Promise.all([
+        const [overviewResponse, analyticsResponse, nextSessions] = await Promise.all([
           fetch(`${apiBaseUrl}/api/projects/${projectSlug}/overview`),
+          fetch(`${apiBaseUrl}/api/projects/${projectSlug}/analytics/overview`),
           loadSessions(0, active),
         ]);
-        if (!overviewResponse.ok)
+        if (!overviewResponse.ok || !analyticsResponse.ok)
           throw new Error("Unable to load observability data.");
         const nextOverview = (await overviewResponse.json()) as Overview;
+        const nextAnalytics = (await analyticsResponse.json()) as Analytics;
         if (!active) return;
         setOverview(nextOverview);
+        setAnalytics(nextAnalytics);
         if (nextSessions.items[0])
           await loadTrace(nextSessions.items[0].id, active);
       } catch (caught) {
@@ -262,6 +276,10 @@ export function App() {
             value={formatLatency(
               overview?.metrics.average_span_duration_ms ?? null,
             )}
+          />
+          <Metric
+            label="Tracked cost"
+            value={formatCost(analytics?.cost.amount_micros ?? null, analytics?.cost.currency ?? null)}
           />
         </section>
         <section className="insight-banner" id="insights">

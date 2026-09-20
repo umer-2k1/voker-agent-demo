@@ -2,7 +2,7 @@ import argparse
 
 from voker_voice_api.bootstrap import create_ingest_key, ensure_development_seed
 from voker_voice_api.database import SessionLocal
-from voker_voice_api.worker import run_once
+from voker_voice_api.worker import expire_recordings, run_once
 
 
 def seed() -> None:
@@ -29,6 +29,7 @@ def main() -> None:
     create_key_parser.add_argument("--label", default="Local development")
     worker_parser = subparsers.add_parser("worker-once", help="Process due durable analysis jobs")
     worker_parser.add_argument("--limit", type=int, default=10)
+    subparsers.add_parser("expire-recordings", help="Revoke expired recording references")
     args = parser.parse_args()
 
     if args.command == "seed":
@@ -37,6 +38,9 @@ def main() -> None:
         create_key(args.label)
     if args.command == "worker-once":
         print(f"Processed {run_once(limit=args.limit)} jobs")
+    if args.command == "expire-recordings":
+        with SessionLocal.begin() as db:
+            print(f"Expired {expire_recordings(db)} recordings")
 
 
 if __name__ == "__main__":

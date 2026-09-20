@@ -11,12 +11,31 @@ from voker_voice_api.connectors import normalize_retell, normalize_vapi
 from voker_voice_api.database import SessionLocal
 from voker_voice_api.ingestion import IngestContext, ingest_batch
 from voker_voice_api.jobs import claim_jobs, complete_job, fail_job, release_expired_leases
-from voker_voice_api.models import Environment, Integration, Job, WebhookReceipt
+from voker_voice_api.models import Environment, Integration, Job, Recording, WebhookReceipt
 from voker_voice_api.semantic import evaluate_session
 
 
 def worker_id() -> str:
     return f"{socket.gethostname()}:{os.getpid()}"
+
+
+def expire_recordings(db: Session, *, now: datetime | None = None) -> int:
+    """Revoke expired recording references while retaining the session trace."""
+
+    current = now or datetime.now(UTC)
+    recordings = list(
+        db.scalars(
+            select(Recording).where(
+                Recording.expires_at.is_not(None),
+                Recording.expires_at <= current,
+                Recording.status.not_in(("deleted", "expired")),
+            )
+        )
+    )
+    for recording in recordings:
+        recording.asset_reference = None
+        recording.status = "expired"
+    return len(recordings)
 
 
 def process_job(db: Session, job: Job) -> None:

@@ -32,7 +32,7 @@ implemented, verified locally, and committed to `main`; an unchecked item remain
 | 8 — Vapi | In progress | Payload normalizer, canonical error mapping, one-time integration token setup, authenticated integration-specific webhook intake, durable receipts, duplicate protection, and deferred normalization are implemented; provider E2E remains. |
 | 9 — Retell | In progress | Payload normalizer, canonical error mapping, one-time integration token setup, authenticated integration-specific webhook intake, durable receipts, duplicate protection, and deferred normalization are implemented; provider E2E remains. |
 | 10 — Analytics/costs | In progress | Versioned rate-card estimates materialize cost records during ingestion; project outcome/source/cost aggregates, dashboard cost display, and minimum-sample interruption/STT cohorts are implemented. Latency screens and additional cohorts remain. |
-| 11 — Recordings | In progress | Optional provider/private recording metadata can be attached without copying audio, returned with the canonical trace, and deleted without affecting that trace; Cloudinary signing, playback, alignment, and scheduled retention remain. |
+| 11 — Recordings | In progress | Optional provider/private recording metadata can be attached without copying audio, returned with the canonical trace, deleted without affecting that trace, and expired by maintenance command; Cloudinary signing, playback, and alignment remain. |
 | 12 — Private beta hardening | In progress | Readiness reports database/queue state and an operational deployment/incident runbook is included; load, security, backup, and hosted acceptance coverage remain. |
 
 Latest verified commit checkpoints include `64c93c2` (semantic evaluator), `c5fa954`

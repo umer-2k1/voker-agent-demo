@@ -12,6 +12,10 @@ source venv/bin/activate
 while true; do voker-voice-api worker-once; sleep 2; done
 ```
 
+Schedule `voker-voice-api expire-recordings` at the configured retention interval.
+It revokes expired recording references while keeping sessions, transcripts, and
+all other trace evidence intact.
+
 Jobs use database leases. A replacement worker automatically returns expired
 leases to the retry queue; dead jobs retain their final error for investigation.
 

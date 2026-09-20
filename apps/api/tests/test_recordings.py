@@ -53,7 +53,7 @@ def test_playback_redirects_only_available_cloudinary_recordings(monkeypatch) ->
     project.id = "project-id"
     db.scalar.side_effect = [project, recording]
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[require_dashboard_user] = MagicMock()
+    app.dependency_overrides[require_dashboard_user] = lambda: MagicMock()
     monkeypatch.setattr(
         "voker_voice_api.routers.dashboard.cloudinary_playback_url",
         lambda recording, settings: "https://example.test/private-audio",

@@ -5,6 +5,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001";
 const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
+const ingestKey = import.meta.env.VITE_INGEST_KEY as string | undefined;
 
 type Overview = {
   project: { name: string; slug: string };
@@ -32,6 +33,15 @@ type Trace = {
     status: string;
     occurred_at: string;
     duration_ms: number | null;
+    payload: Record<string, unknown>;
+  }>;
+  turns: Array<{
+    id: string;
+    external_turn_id: string;
+    sequence: number;
+    speaker: string;
+    started_at: string;
+    transcript: string | null;
   }>;
   errors: Array<{ id: string; type: string; message: string }>;
   findings: Array<{
@@ -41,6 +51,8 @@ type Trace = {
     statement: string;
   }>;
 };
+
+type SessionPage = { offset: number; limit: number; total: number };
 
 function formatLatency(value: number | null) {
   return value === null
@@ -59,9 +71,14 @@ function formatDate(value: string) {
 export function App() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [sessions, setSessions] = useState<VoiceSession[]>([]);
+  const [page, setPage] = useState<SessionPage>({ offset: 0, limit: 30, total: 0 });
   const [trace, setTrace] = useState<Trace | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [showRaw, setShowRaw] = useState(false);
 
   async function loadTrace(sessionId: string, active = true) {
     try {
@@ -81,23 +98,35 @@ export function App() {
     }
   }
 
+  async function loadSessions(offset = 0, active = true) {
+    const query = new URLSearchParams({ limit: "30", offset: String(offset) });
+    if (statusFilter) query.set("status", statusFilter);
+    if (sourceFilter) query.set("source", sourceFilter);
+    if (search.trim()) query.set("search", search.trim());
+    const response = await fetch(
+      `${apiBaseUrl}/api/projects/${projectSlug}/sessions?${query}`,
+    );
+    if (!response.ok) throw new Error("Unable to load captured sessions.");
+    const payload = (await response.json()) as { items: VoiceSession[]; page: SessionPage };
+    if (!active) return payload;
+    setSessions(payload.items);
+    setPage(payload.page);
+    return payload;
+  }
+
   useEffect(() => {
     let active = true;
     async function loadDashboard() {
       try {
-        const [overviewResponse, sessionsResponse] = await Promise.all([
+        const [overviewResponse, nextSessions] = await Promise.all([
           fetch(`${apiBaseUrl}/api/projects/${projectSlug}/overview`),
-          fetch(`${apiBaseUrl}/api/projects/${projectSlug}/sessions`),
+          loadSessions(0, active),
         ]);
-        if (!overviewResponse.ok || !sessionsResponse.ok)
+        if (!overviewResponse.ok)
           throw new Error("Unable to load observability data.");
         const nextOverview = (await overviewResponse.json()) as Overview;
-        const nextSessions = (await sessionsResponse.json()) as {
-          items: VoiceSession[];
-        };
         if (!active) return;
         setOverview(nextOverview);
-        setSessions(nextSessions.items);
         if (nextSessions.items[0])
           await loadTrace(nextSessions.items[0].id, active);
       } catch (caught) {
@@ -115,7 +144,34 @@ export function App() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [statusFilter, sourceFilter, search]);
+
+  useEffect(() => {
+    if (!trace || !ingestKey || trace.session.status !== "in_progress") return;
+    const liveSession = trace.session;
+    const controller = new AbortController();
+    async function stream() {
+      try {
+        const response = await fetch(
+          `${apiBaseUrl}/v1/live/sessions/${encodeURIComponent(liveSession.external_session_id)}`,
+          { headers: { Authorization: `Bearer ${ingestKey}` }, signal: controller.signal },
+        );
+        if (!response.ok || !response.body) return;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        while (!controller.signal.aborted) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (decoder.decode(value).includes("event: trace")) await loadTrace(liveSession.id);
+        }
+      } catch (caught) {
+        if (!(caught instanceof DOMException && caught.name === "AbortError")) return;
+      }
+    }
+    void stream();
+    return () => controller.abort();
+  }, [trace?.session.id, trace?.session.status]);
+
 
   return (
     <main className="product-shell">
@@ -200,7 +256,7 @@ export function App() {
                 <p className="eyebrow">Recent activity</p>
                 <h2>Captured sessions</h2>
               </div>
-              <span>{sessions.length} shown</span>
+              <span>{page.total} captured</span>
             </CardHeader>
             {loading ? (
               <p className="empty-state">Loading persisted sessions…</p>
@@ -211,6 +267,11 @@ export function App() {
                 to begin.
               </p>
             ) : null}
+            <div className="session-filters">
+              <input aria-label="Search sessions" placeholder="Search session ID" value={search} onChange={(event) => setSearch(event.target.value)} />
+              <select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="failed">Failed</option></select>
+              <input aria-label="Filter by source" placeholder="Source" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} />
+            </div>
             <div className="session-list">
               {sessions.map((session) => (
                 <button
@@ -238,6 +299,7 @@ export function App() {
                 </button>
               ))}
             </div>
+            {page.total > page.limit ? <div className="pagination"><button disabled={page.offset === 0} onClick={() => void loadSessions(Math.max(0, page.offset - page.limit))}>Previous</button><span>{page.offset + 1}–{Math.min(page.offset + page.limit, page.total)} of {page.total}</span><button disabled={page.offset + page.limit >= page.total} onClick={() => void loadSessions(page.offset + page.limit)}>Next</button></div> : null}
           </Card>
           <Card className="panel trace-panel" id="trace">
             <CardHeader className="panel-heading">
@@ -257,6 +319,10 @@ export function App() {
               </p>
             ) : (
               <>
+                <section className="transcript-panel" aria-label="Transcript">
+                  <p className="eyebrow">Transcript</p>
+                  {trace.turns.length ? trace.turns.map((turn) => <div className="transcript-turn" key={turn.id}><b>{turn.speaker}</b><span>{turn.transcript ?? "No transcript captured"}</span></div>) : <p className="analysis-pending">No transcript was captured for this trace.</p>}
+                </section>
                 <div className="finding-list">
                   {trace.findings.length ? (
                     trace.findings.map((finding) => (
@@ -292,6 +358,8 @@ export function App() {
                     {item.message}
                   </div>
                 ))}
+                <button className="raw-toggle" onClick={() => setShowRaw(!showRaw)} aria-expanded={showRaw}>{showRaw ? "Hide" : "Inspect"} normalized events</button>
+                {showRaw ? <pre className="raw-inspector">{JSON.stringify(trace.events, null, 2)}</pre> : null}
               </>
             )}
           </Card>

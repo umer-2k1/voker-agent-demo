@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
@@ -110,13 +111,23 @@ function turnOffsetSeconds(turn: Trace["turns"][number], session: VoiceSession) 
 }
 
 function DashboardPage() {
-  const [overview, setOverview] = useState<Overview | null>(null);
-  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const overviewQuery = useQuery({ queryKey: ["overview", projectSlug], queryFn: async () => {
+    const response = await fetch(`${apiBaseUrl}/api/projects/${projectSlug}/overview`, { credentials: "include" });
+    if (!response.ok) throw new Error("Unable to load observability data.");
+    return response.json() as Promise<Overview>;
+  }});
+  const analyticsQuery = useQuery({ queryKey: ["analytics", projectSlug], queryFn: async () => {
+    const response = await fetch(`${apiBaseUrl}/api/projects/${projectSlug}/analytics/overview`, { credentials: "include" });
+    if (!response.ok) throw new Error("Unable to load analytics.");
+    return response.json() as Promise<Analytics>;
+  }});
+  const overview = overviewQuery.data ?? null;
+  const analytics = analyticsQuery.data ?? null;
   const [sessions, setSessions] = useState<VoiceSession[]>([]);
   const [page, setPage] = useState<SessionPage>({ offset: 0, limit: 30, total: 0 });
   const [trace, setTrace] = useState<Trace | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const loading = overviewQuery.isPending || analyticsQuery.isPending;
   const [statusFilter, setStatusFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -130,6 +141,7 @@ function DashboardPage() {
     try {
       const response = await fetch(
         `${apiBaseUrl}/api/projects/${projectSlug}/sessions/${sessionId}`,
+        { credentials: "include" },
       );
       if (!response.ok) throw new Error("Unable to load this session trace.");
       const payload = (await response.json()) as Trace;
@@ -157,7 +169,7 @@ function DashboardPage() {
     try {
       const response = await fetch(
         `${apiBaseUrl}/api/projects/${projectSlug}/sessions/${trace.session.id}/analysis`,
-        { method: "POST" },
+        { method: "POST", credentials: "include" },
       );
       if (!response.ok) throw new Error("Unable to queue re-analysis.");
       await loadTrace(trace.session.id);
@@ -173,6 +185,7 @@ function DashboardPage() {
     if (search.trim()) query.set("search", search.trim());
     const response = await fetch(
       `${apiBaseUrl}/api/projects/${projectSlug}/sessions?${query}`,
+      { credentials: "include" },
     );
     if (!response.ok) throw new Error("Unable to load captured sessions.");
     const payload = (await response.json()) as { items: VoiceSession[]; page: SessionPage };
@@ -186,18 +199,8 @@ function DashboardPage() {
     let active = true;
     async function loadDashboard() {
       try {
-        const [overviewResponse, analyticsResponse, nextSessions] = await Promise.all([
-          fetch(`${apiBaseUrl}/api/projects/${projectSlug}/overview`),
-          fetch(`${apiBaseUrl}/api/projects/${projectSlug}/analytics/overview`),
-          loadSessions(0, active),
-        ]);
-        if (!overviewResponse.ok || !analyticsResponse.ok)
-          throw new Error("Unable to load observability data.");
-        const nextOverview = (await overviewResponse.json()) as Overview;
-        const nextAnalytics = (await analyticsResponse.json()) as Analytics;
+        const nextSessions = await loadSessions(0, active);
         if (!active) return;
-        setOverview(nextOverview);
-        setAnalytics(nextAnalytics);
         if (nextSessions.items[0])
           await loadTrace(nextSessions.items[0].id, active);
       } catch (caught) {
@@ -207,8 +210,6 @@ function DashboardPage() {
               ? caught.message
               : "Unable to load dashboard.",
           );
-      } finally {
-        if (active) setLoading(false);
       }
     }
     void loadDashboard();

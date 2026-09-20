@@ -35,6 +35,9 @@ leases to the retry queue; dead jobs retain their final error for investigation.
 For a development rollback only, use `alembic -c apps/api/alembic.ini downgrade -1`
 after confirming no later migration has stored production data.
 
+The supported runtime matrix and the tested backup/restore procedure are in
+[`private-beta.md`](./private-beta.md).
+
 ## Incident handling
 
 - Ingest unavailable: customers’ SDK exporters remain fail-open; restore the API,

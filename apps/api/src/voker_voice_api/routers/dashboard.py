@@ -8,11 +8,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from voker_voice_api.analytics import CohortValue, latency_distribution, voice_impact_cohorts
+from voker_voice_api.bootstrap import create_ingest_key
 from voker_voice_api.config import get_settings
 from voker_voice_api.database import get_db
 from voker_voice_api.models import (
     AnalysisRun,
+    APIKey,
     CostRecord,
+    Environment,
     Error,
     Event,
     Finding,
@@ -50,6 +53,52 @@ def project_for_slug(db: Session, project_slug: str) -> Project:
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+@router.get("/projects/{project_slug}/api-keys")
+def list_api_keys(project_slug: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    project = project_for_slug(db, project_slug)
+    keys = db.scalars(
+        select(APIKey, Environment)
+        .join(Environment, APIKey.environment_id == Environment.id)
+        .where(APIKey.project_id == project.id)
+        .order_by(APIKey.created_at.desc())
+    ).all()
+    return {"items": [{
+        "id": str(key.id), "label": key.label, "prefix": key.prefix,
+        "environment": environment.slug, "created_at": timestamp(key.created_at),
+        "last_used_at": timestamp(key.last_used_at), "revoked_at": timestamp(key.revoked_at),
+    } for key, environment in keys]}
+
+
+@router.post("/projects/{project_slug}/api-keys", status_code=201)
+def create_api_key(
+    project_slug: str, payload: dict[str, str] = Body(...), db: Session = Depends(get_db)
+) -> dict[str, str]:
+    project = project_for_slug(db, project_slug)
+    environment = db.scalar(select(Environment).where(
+        Environment.project_id == project.id,
+        Environment.slug == payload.get("environment", "development"),
+    ))
+    label = payload.get("label", "")
+    if environment is None or not label:
+        raise HTTPException(
+            status_code=422, detail="A valid environment and key label are required"
+        )
+    generated = create_ingest_key(db, project=project, environment=environment, label=label)
+    db.commit()
+    return {"prefix": generated.prefix, "api_key": generated.raw}
+
+
+@router.post("/projects/{project_slug}/api-keys/{key_id}/revoke")
+def revoke_api_key(project_slug: str, key_id: str, db: Session = Depends(get_db)) -> dict[str, str]:
+    project = project_for_slug(db, project_slug)
+    key = db.scalar(select(APIKey).where(APIKey.id == key_id, APIKey.project_id == project.id))
+    if key is None:
+        raise HTTPException(status_code=404, detail="API key not found")
+    key.revoked_at = datetime.now(UTC)
+    db.commit()
+    return {"id": str(key.id), "status": "revoked"}
 
 
 @router.get("/projects/{project_slug}/integrations")

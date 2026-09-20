@@ -16,6 +16,12 @@ Schedule `voker-voice-api expire-recordings` at the configured retention interva
 It revokes expired recording references while keeping sessions, transcripts, and
 all other trace evidence intact.
 
+For an available Cloudinary recording, the dashboard/API must request
+`GET /api/projects/{project}/sessions/{session}/recordings/{recording}/playback`.
+The API verifies that the recording belongs to that trace, then redirects to a
+five-minute authenticated Cloudinary download URL. Do not store or expose that
+signed URL as a persistent recording reference.
+
 Jobs use database leases. A replacement worker automatically returns expired
 leases to the retry queue; dead jobs retain their final error for investigation.
 

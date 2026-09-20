@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     ingest_max_events: int = 500
     openrouter_api_key: str | None = None
     openrouter_model: str | None = None
+    cloudinary_cloud_name: str | None = None
+    cloudinary_api_key: str | None = None
+    cloudinary_api_secret: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ROOT / ".env",

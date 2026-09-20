@@ -3,10 +3,12 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from voker_voice_api.analytics import CohortValue, voice_impact_cohorts
+from voker_voice_api.config import get_settings
 from voker_voice_api.database import get_db
 from voker_voice_api.models import (
     AnalysisRun,
@@ -26,6 +28,7 @@ from voker_voice_api.models import (
 from voker_voice_api.models import (
     Session as VoiceSession,
 )
+from voker_voice_api.recordings import cloudinary_playback_url
 from voker_voice_api.security import generate_webhook_token
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
@@ -499,3 +502,33 @@ def delete_recording_metadata(
     recording.status = "deleted"
     db.commit()
     return {"id": str(recording.id), "status": recording.status}
+
+
+@router.get("/projects/{project_slug}/sessions/{session_id}/recordings/{recording_id}/playback")
+def redirect_to_recording_playback(
+    project_slug: str,
+    session_id: str,
+    recording_id: str,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Issue playback through a short-lived signed URL; audio never transits this API."""
+
+    project = project_for_slug(db, project_slug)
+    recording = db.scalar(
+        select(Recording)
+        .join(VoiceSession, Recording.session_id == VoiceSession.id)
+        .where(
+            VoiceSession.project_id == project.id,
+            VoiceSession.id == session_id,
+            Recording.id == recording_id,
+        )
+    )
+    if recording is None:
+        raise HTTPException(status_code=404, detail="Recording not found")
+    if recording.status != "available":
+        raise HTTPException(status_code=410, detail="Recording is no longer available")
+    try:
+        url = cloudinary_playback_url(recording, get_settings())
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return RedirectResponse(url=url, status_code=307)

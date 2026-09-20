@@ -2,6 +2,7 @@ import argparse
 
 from voker_voice_api.bootstrap import create_ingest_key, ensure_development_seed
 from voker_voice_api.database import SessionLocal
+from voker_voice_api.worker import run_once
 
 
 def seed() -> None:
@@ -26,12 +27,16 @@ def main() -> None:
         "create-ingest-key", help="Create a development ingest key"
     )
     create_key_parser.add_argument("--label", default="Local development")
+    worker_parser = subparsers.add_parser("worker-once", help="Process due durable analysis jobs")
+    worker_parser.add_argument("--limit", type=int, default=10)
     args = parser.parse_args()
 
     if args.command == "seed":
         seed()
     if args.command == "create-ingest-key":
         create_key(args.label)
+    if args.command == "worker-once":
+        print(f"Processed {run_once(limit=args.limit)} jobs")
 
 
 if __name__ == "__main__":

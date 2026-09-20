@@ -69,3 +69,15 @@ def test_langgraph_callback_keeps_parallel_children_under_one_parent() -> None:
     starts = [event for event in sink.events if event["event_type"] == "graph.node.started"]
     assert starts[1]["parent_span_id"] == starts[0]["span_id"]
     assert starts[2]["parent_span_id"] == starts[0]["span_id"]
+
+
+def test_observed_graph_records_resume_input() -> None:
+    class ResumedGraph:
+        def invoke(self, input, *_args, **_kwargs):
+            return input
+
+    sink = MemoryEventSink()
+    with VokerVoice(event_sink=sink, enabled=True).session(agent="voice-router") as session:
+        result = observe_langgraph(ResumedGraph(), session).invoke({"resume": "approved"})
+    assert result["resume"] == "approved"
+    assert any(event["event_type"] == "graph.resumed" for event in sink.events)

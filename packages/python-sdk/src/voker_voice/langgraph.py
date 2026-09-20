@@ -115,6 +115,7 @@ class ObservedGraph:
         return merged
 
     def invoke(self, input: Any, config: dict[str, Any] | None = None, **kwargs: Any) -> Any:
+        self._record_resume(input)
         try:
             return self.graph.invoke(input, config=self._config(config), **kwargs)
         except BaseException as error:
@@ -122,6 +123,7 @@ class ObservedGraph:
             raise
 
     async def ainvoke(self, input: Any, config: dict[str, Any] | None = None, **kwargs: Any) -> Any:
+        self._record_resume(input)
         try:
             return await self.graph.ainvoke(input, config=self._config(config), **kwargs)
         except BaseException as error:
@@ -139,6 +141,21 @@ class ObservedGraph:
                 "interrupt_type": type(error).__name__,
                 "message": str(error),
             },
+        )
+
+    def _record_resume(self, input: Any) -> None:
+        """Identify LangGraph resume commands without importing an optional class."""
+
+        resume_value = (
+            input.get("resume") if isinstance(input, dict) else getattr(input, "resume", None)
+        )
+        if resume_value is None:
+            return
+        self.session.emit(
+            "graph.resumed",
+            status="ok",
+            attributes={"framework": "langgraph"},
+            input={"resume": str(resume_value)},
         )
 
 

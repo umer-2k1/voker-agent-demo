@@ -385,6 +385,27 @@ h2 {
   margin: 8px 0;
   padding: 8px 20px 20px;
 }
+.trace-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px 20px 0;
+}
+.trace-filters button {
+  background: #fff;
+  border: 1px solid #d5e2df;
+  border-radius: 999px;
+  color: #53736d;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+.trace-filters button.selected {
+  background: #ddeaed;
+  border-color: #a9ccc6;
+  color: #004d43;
+  font-weight: 700;
+}
 .timeline li {
   align-items: flex-start;
   border-left: 1px solid #dce8e5;

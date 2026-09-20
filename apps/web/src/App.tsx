@@ -79,6 +79,7 @@ export function App() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [search, setSearch] = useState("");
   const [showRaw, setShowRaw] = useState(false);
+  const [traceFilter, setTraceFilter] = useState<"all" | "agent" | "handoff">("all");
 
   async function loadTrace(sessionId: string, active = true) {
     try {
@@ -171,6 +172,12 @@ export function App() {
     void stream();
     return () => controller.abort();
   }, [trace?.session.id, trace?.session.status]);
+
+  const visibleEvents = trace?.events.filter((event) => {
+    if (traceFilter === "all") return true;
+    if (traceFilter === "handoff") return event.event_type === "agent.handoff";
+    return event.event_type.startsWith("agent.") || event.event_type.startsWith("graph.");
+  });
 
 
   return (
@@ -338,8 +345,28 @@ export function App() {
                     </p>
                   )}
                 </div>
+                <div className="trace-filters" aria-label="Trace event filters">
+                  <button
+                    className={traceFilter === "all" ? "selected" : ""}
+                    onClick={() => setTraceFilter("all")}
+                  >
+                    All events
+                  </button>
+                  <button
+                    className={traceFilter === "agent" ? "selected" : ""}
+                    onClick={() => setTraceFilter("agent")}
+                  >
+                    Graph & agents
+                  </button>
+                  <button
+                    className={traceFilter === "handoff" ? "selected" : ""}
+                    onClick={() => setTraceFilter("handoff")}
+                  >
+                    Handoffs
+                  </button>
+                </div>
                 <ol className="timeline">
-                  {trace.events.map((event) => (
+                  {visibleEvents?.map((event) => (
                     <li key={event.id}>
                       <span className={`timeline-dot ${event.status}`} />
                       <div>

@@ -50,6 +50,12 @@ type Trace = {
     severity: string | null;
     statement: string;
   }>;
+  analysis_runs: Array<{
+    id: string;
+    status: string;
+    prompt_version: string;
+    model: string | null;
+  }>;
 };
 
 type SessionPage = { offset: number; limit: number; total: number };
@@ -96,6 +102,20 @@ export function App() {
             ? caught.message
             : "Unable to load session trace.",
         );
+    }
+  }
+
+  async function requestReanalysis() {
+    if (!trace) return;
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/api/projects/${projectSlug}/sessions/${trace.session.id}/analysis`,
+        { method: "POST" },
+      );
+      if (!response.ok) throw new Error("Unable to queue re-analysis.");
+      await loadTrace(trace.session.id);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to queue re-analysis.");
     }
   }
 
@@ -344,6 +364,19 @@ export function App() {
                       source of truth.
                     </p>
                   )}
+                </div>
+                <div className="analysis-history">
+                  <div>
+                    <p className="eyebrow">Analysis history</p>
+                    <span>{trace.analysis_runs.length} immutable runs</span>
+                  </div>
+                  <button onClick={() => void requestReanalysis()}>Re-analyze</button>
+                  {trace.analysis_runs.slice(0, 3).map((run) => (
+                    <small key={run.id}>
+                      {run.status} · {run.prompt_version}
+                      {run.model ? ` · ${run.model}` : ""}
+                    </small>
+                  ))}
                 </div>
                 <div className="trace-filters" aria-label="Trace event filters">
                   <button

@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 
 from voker_voice_api.database import get_db
 from voker_voice_api.models import (
+    AnalysisRun,
     Error,
     Event,
     Finding,
     FindingEvidence,
+    Job,
     Project,
     Span,
     Turn,
@@ -166,6 +168,11 @@ def get_session_trace(
     findings = db.scalars(
         select(Finding).where(Finding.session_id == session.id).order_by(Finding.created_at.desc())
     ).all()
+    analysis_runs = db.scalars(
+        select(AnalysisRun)
+        .where(AnalysisRun.session_id == session.id)
+        .order_by(AnalysisRun.created_at.desc(), AnalysisRun.id.desc())
+    ).all()
     turns = db.scalars(
         select(Turn).where(Turn.session_id == session.id).order_by(Turn.sequence, Turn.id)
     ).all()
@@ -258,4 +265,37 @@ def get_session_trace(
             }
             for finding in findings
         ],
+        "analysis_runs": [
+            {
+                "id": str(run.id),
+                "status": run.status,
+                "analysis_version": run.analysis_version,
+                "prompt_version": run.prompt_version,
+                "model": run.model,
+                "result": run.result,
+                "error": run.error,
+                "created_at": timestamp(run.created_at),
+            }
+            for run in analysis_runs
+        ],
     }
+
+
+@router.post("/projects/{project_slug}/sessions/{session_id}/analysis")
+def request_reanalysis(
+    project_slug: str, session_id: str, db: Session = Depends(get_db)
+) -> dict[str, str]:
+    """Queue a new deterministic and semantic pass without mutating prior analysis runs."""
+
+    project = project_for_slug(db, project_slug)
+    session = db.scalar(
+        select(VoiceSession).where(
+            VoiceSession.project_id == project.id, VoiceSession.id == session_id
+        )
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    for job_type in ("run_deterministic_analysis", "run_semantic_analysis"):
+        db.add(Job(project_id=project.id, type=job_type, payload={"session_id": str(session.id)}))
+    db.commit()
+    return {"status": "queued"}

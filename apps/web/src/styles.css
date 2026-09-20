@@ -391,6 +391,29 @@ h2 {
   gap: 8px;
   padding: 16px 20px 0;
 }
+.analysis-history {
+  align-items: center;
+  background: #f7faf9;
+  border-top: 1px solid #e7eeec;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 14px 20px;
+}
+.analysis-history > div { margin-right: auto; }
+.analysis-history .eyebrow { margin-bottom: 3px; }
+.analysis-history span,
+.analysis-history small { color: #718882; font-size: 11px; }
+.analysis-history button {
+  background: #004d43;
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 10px;
+}
 .trace-filters button {
   background: #fff;
   border: 1px solid #d5e2df;

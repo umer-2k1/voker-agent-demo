@@ -28,7 +28,7 @@ implemented, verified locally, and committed to `main`; an unchecked item remain
 | 4 — Trace dashboard | Complete | Live trace refresh, transcript projection, normalized-event inspector, bounded session queries, filters, and pagination are implemented. |
 | 5 — LiveKit | In progress | Public AgentSession observer maps lifecycle, transcript, interruption, talk-over, metrics, and playback events with regression coverage; hosted voice E2E remains. |
 | 6 — LangGraph | Complete vertical slice | Public callback tracing covers nodes, handoffs, retries, interrupts, resumes, and parallel child spans; the dashboard filters graph/agent and handoff activity. |
-| 7 — Intelligence | In progress | Deterministic evidence-linked worker now covers errors, cancellation/timeouts, slow stages, interruptions, and talk-over; the evidence-validated OpenRouter evaluator records immutable completed/disabled runs, while live semantic E2E and controlled re-analysis remain. |
+| 7 — Intelligence | In progress | Deterministic evidence-linked worker covers errors, cancellation/timeouts, slow stages, interruptions, and talk-over; the evaluator records immutable completed/disabled runs, and the dashboard exposes analysis history plus controlled re-analysis. Live semantic E2E remains. |
 | 8 — Vapi | In progress | Payload normalizer and canonical error mapping implemented; authenticated webhook route/E2E remains. |
 | 9 — Retell | In progress | Payload normalizer and canonical error mapping implemented; authenticated webhook route/E2E remains. |
 | 10–12 | Not started | Analytics/costs, recordings, and private-beta hardening remain. |

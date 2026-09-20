@@ -29,8 +29,8 @@ implemented, verified locally, and committed to `main`; an unchecked item remain
 | 5 — LiveKit | In progress | Public AgentSession observer maps lifecycle, transcript, interruption, talk-over, metrics, and playback events with regression coverage; hosted voice E2E remains. |
 | 6 — LangGraph | Complete vertical slice | Public callback tracing covers nodes, handoffs, retries, interrupts, resumes, and parallel child spans; the dashboard filters graph/agent and handoff activity. |
 | 7 — Intelligence | In progress | Deterministic evidence-linked worker covers errors, cancellation/timeouts, slow stages, interruptions, and talk-over; the evaluator records immutable completed/disabled runs, and the dashboard exposes analysis history plus controlled re-analysis. Live semantic E2E remains. |
-| 8 — Vapi | In progress | Payload normalizer and canonical error mapping implemented; authenticated webhook route/E2E remains. |
-| 9 — Retell | In progress | Payload normalizer and canonical error mapping implemented; authenticated webhook route/E2E remains. |
+| 8 — Vapi | In progress | Payload normalizer, canonical error mapping, one-time integration token setup, authenticated integration-specific webhook intake, durable receipts, duplicate protection, and deferred normalization are implemented; provider E2E remains. |
+| 9 — Retell | In progress | Payload normalizer, canonical error mapping, one-time integration token setup, authenticated integration-specific webhook intake, durable receipts, duplicate protection, and deferred normalization are implemented; provider E2E remains. |
 | 10–12 | Not started | Analytics/costs, recordings, and private-beta hardening remain. |
 
 Latest verified commit checkpoints include `64c93c2` (semantic evaluator), `c5fa954`

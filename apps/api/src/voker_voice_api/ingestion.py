@@ -25,15 +25,25 @@ from voker_voice_api.schemas import BatchItemResult, CanonicalEvent, EventBatchR
 
 @dataclass(frozen=True)
 class IngestContext:
-    api_key: APIKey
+    api_key: APIKey | None = None
+    resolved_project_id: uuid.UUID | None = None
+    resolved_environment_id: uuid.UUID | None = None
 
     @property
     def project_id(self) -> uuid.UUID:
-        return self.api_key.project_id
+        if self.api_key is not None:
+            return self.api_key.project_id
+        if self.resolved_project_id is not None:
+            return self.resolved_project_id
+        raise ValueError("Ingest context has no project")
 
     @property
     def environment_id(self) -> uuid.UUID:
-        return self.api_key.environment_id
+        if self.api_key is not None:
+            return self.api_key.environment_id
+        if self.resolved_environment_id is not None:
+            return self.resolved_environment_id
+        raise ValueError("Ingest context has no environment")
 
 
 def resolve_agent(db: Session, project_id: uuid.UUID, event: CanonicalEvent) -> Agent | None:

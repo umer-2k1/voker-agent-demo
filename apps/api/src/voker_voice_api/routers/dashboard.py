@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from voker_voice_api.models import (
     Event,
     Finding,
     FindingEvidence,
+    Integration,
     Job,
     Project,
     Span,
@@ -22,6 +23,7 @@ from voker_voice_api.models import (
 from voker_voice_api.models import (
     Session as VoiceSession,
 )
+from voker_voice_api.security import generate_webhook_token
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
@@ -39,6 +41,56 @@ def project_for_slug(db: Session, project_slug: str) -> Project:
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+@router.get("/projects/{project_slug}/integrations")
+def list_integrations(project_slug: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    project = project_for_slug(db, project_slug)
+    integrations = db.scalars(
+        select(Integration)
+        .where(Integration.project_id == project.id)
+        .order_by(Integration.created_at.desc(), Integration.id.desc())
+    ).all()
+    return {
+        "items": [
+            {
+                "id": str(item.id),
+                "provider": item.provider,
+                "external_id": item.external_id,
+                "name": item.name,
+                "status": item.status,
+            }
+            for item in integrations
+        ]
+    }
+
+
+@router.post("/projects/{project_slug}/integrations", status_code=201)
+def create_integration(
+    project_slug: str,
+    payload: dict[str, str] = Body(...),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Create an integration and return its delivery token exactly once."""
+
+    project = project_for_slug(db, project_slug)
+    provider = payload.get("provider", "")
+    name = payload.get("name", "")
+    external_id = payload.get("external_id")
+    if provider not in {"vapi", "retell"} or not name:
+        raise HTTPException(status_code=422, detail="provider (vapi/retell) and name are required")
+    token = generate_webhook_token()
+    integration = Integration(
+        project_id=project.id,
+        provider=provider,
+        external_id=external_id or None,
+        name=name,
+        status="active",
+        config={"webhook_token_hash": token.secret_hash},
+    )
+    db.add(integration)
+    db.commit()
+    return {"id": str(integration.id), "webhook_token": token.raw}
 
 
 def session_summary(session: VoiceSession, error_count: int, event_count: int) -> dict[str, Any]:

@@ -1,4 +1,5 @@
 import gzip
+import hmac
 import json
 import uuid
 from collections.abc import AsyncIterator
@@ -21,7 +22,7 @@ from voker_voice_api.ingestion import (
     sse_payload,
 )
 from voker_voice_api.live import broker
-from voker_voice_api.models import Job
+from voker_voice_api.models import Integration, Job, WebhookReceipt
 from voker_voice_api.models import Session as VoiceSession
 from voker_voice_api.schemas import (
     CanonicalEvent,
@@ -30,6 +31,7 @@ from voker_voice_api.schemas import (
     SessionCreateRequest,
     SessionEndRequest,
 )
+from voker_voice_api.security import hash_api_key
 
 router = APIRouter(prefix="/v1", tags=["ingestion"])
 
@@ -102,6 +104,58 @@ async def ingest_webhook(
     response = ingest_batch(db, context, events)
     db.commit()
     return response
+
+
+@router.post("/webhooks/{provider}/{integration_id}", status_code=status.HTTP_202_ACCEPTED)
+async def receive_authenticated_webhook(
+    provider: str,
+    integration_id: uuid.UUID,
+    request: Request,
+    x_provider_delivery_id: str = Header(min_length=1),
+    x_voker_webhook_token: str = Header(min_length=1),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Durably accept a provider delivery before deferred normalization."""
+
+    if provider not in {"vapi", "retell"}:
+        raise HTTPException(status_code=404, detail="Unsupported webhook provider")
+    integration = db.get(Integration, integration_id)
+    if integration is None or integration.provider != provider or integration.status == "disabled":
+        raise HTTPException(status_code=404, detail="Integration not found")
+    expected = integration.config.get("webhook_token_hash")
+    token_is_valid = isinstance(expected, str) and hmac.compare_digest(
+        expected, hash_api_key(x_voker_webhook_token)
+    )
+    if not token_is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook token"
+        )
+    raw = await decode_json_body(request)
+    duplicate = db.scalar(
+        select(WebhookReceipt.id).where(
+            WebhookReceipt.integration_id == integration.id,
+            WebhookReceipt.provider_delivery_id == x_provider_delivery_id,
+        )
+    )
+    if duplicate is not None:
+        return {"status": "duplicate"}
+    receipt = WebhookReceipt(
+        integration_id=integration.id,
+        provider_delivery_id=x_provider_delivery_id,
+        signature_valid=True,
+        payload=raw,
+    )
+    db.add(receipt)
+    db.flush()
+    db.add(
+        Job(
+            project_id=integration.project_id,
+            type="normalize_webhook",
+            payload={"receipt_id": str(receipt.id)},
+        )
+    )
+    db.commit()
+    return {"status": "accepted"}
 
 
 @router.post("/webhooks/vapi", response_model=EventBatchResponse)

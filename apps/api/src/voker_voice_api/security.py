@@ -21,3 +21,10 @@ def generate_ingest_key(environment: str = "live") -> GeneratedAPIKey:
 
 def hash_api_key(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def generate_webhook_token() -> GeneratedAPIKey:
+    """Generate a one-time integration webhook token; persist only its digest."""
+
+    raw = f"vwh_{secrets.token_urlsafe(32)}"
+    return GeneratedAPIKey(raw=raw, prefix=raw[:14], secret_hash=hash_api_key(raw))

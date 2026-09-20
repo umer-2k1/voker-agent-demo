@@ -87,6 +87,29 @@ class EventBatchRequest(BaseModel):
     events: list[CanonicalEvent] = Field(min_length=1, max_length=500)
 
 
+class RawEventBatchRequest(BaseModel):
+    """Raw batch enables valid items to survive malformed neighbors."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = Field(default="1.0", pattern=r"^1\.\d+$")
+    events: list[dict[str, Any]] = Field(min_length=1, max_length=500)
+
+
+class SessionCreateRequest(BaseModel):
+    external_session_id: str = Field(min_length=1, max_length=255)
+    trace_id: str = Field(min_length=1, max_length=64)
+    source: str = Field(default="custom", max_length=64)
+    started_at: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SessionEndRequest(BaseModel):
+    ended_at: datetime
+    status: str = Field(default="completed", max_length=32)
+    outcome: str | None = Field(default=None, max_length=32)
+
+
 class BatchItemResult(BaseModel):
     event_id: str
     status: str

@@ -173,12 +173,16 @@ class Session(Timestamped, Base):
 
 class Turn(Base):
     __tablename__ = "turns"
-    __table_args__ = (UniqueConstraint("session_id", "sequence", name="uq_turn_session_sequence"),)
+    __table_args__ = (
+        UniqueConstraint("session_id", "sequence", name="uq_turn_session_sequence"),
+        UniqueConstraint("session_id", "external_turn_id", name="uq_turn_session_external"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
     )
+    external_turn_id: Mapped[str] = mapped_column(String(64), nullable=False)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     speaker: Mapped[str] = mapped_column(String(32), nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -189,12 +193,16 @@ class Turn(Base):
 
 class AgentRun(Base):
     __tablename__ = "agent_runs"
-    __table_args__ = (Index("ix_agent_runs_session_started", "session_id", "started_at"),)
+    __table_args__ = (
+        UniqueConstraint("session_id", "external_run_id", name="uq_agent_run_session_external"),
+        Index("ix_agent_runs_session_started", "session_id", "started_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
     )
+    external_run_id: Mapped[str] = mapped_column(String(64), nullable=False)
     turn_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("turns.id", ondelete="SET NULL"))
     parent_run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("agent_runs.id", ondelete="SET NULL")
@@ -229,6 +237,7 @@ class Span(Base):
     parent_span_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("spans.id", ondelete="SET NULL")
     )
+    parent_external_span_id: Mapped[str | None] = mapped_column(String(64))
     external_span_id: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     kind: Mapped[str] = mapped_column(String(64), nullable=False)

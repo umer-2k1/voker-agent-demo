@@ -35,6 +35,12 @@ alembic -c apps/api/alembic.ini upgrade head
 voker-voice-api seed
 ```
 
+Create a local ingest key when testing the API manually. The command prints the raw key once; save it only in the ignored `.env` or your local shell session, never in source or logs:
+
+```bash
+voker-voice-api create-ingest-key --label "Local API testing"
+```
+
 ## Run
 
 ```bash

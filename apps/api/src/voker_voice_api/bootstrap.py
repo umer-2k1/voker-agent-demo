@@ -1,7 +1,8 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from voker_voice_api.models import Agent, Environment, Organization, Project
+from voker_voice_api.models import Agent, APIKey, Environment, Organization, Project
+from voker_voice_api.security import GeneratedAPIKey, generate_ingest_key
 
 DEVELOPMENT_ORGANIZATION = "Voker Development"
 DEVELOPMENT_PROJECT_SLUG = "voker-voice"
@@ -68,3 +69,22 @@ def ensure_development_seed(db: Session) -> tuple[Organization, Project, Environ
         db.flush()
 
     return organization, project, environment, agent
+
+
+def create_ingest_key(
+    db: Session, *, project: Project, environment: Environment, label: str
+) -> GeneratedAPIKey:
+    """Create a project/environment scoped key and return its raw value once."""
+
+    generated = generate_ingest_key("live" if environment.kind == "production" else "test")
+    db.add(
+        APIKey(
+            project_id=project.id,
+            environment_id=environment.id,
+            label=label,
+            prefix=generated.prefix,
+            secret_hash=generated.secret_hash,
+        )
+    )
+    db.flush()
+    return generated

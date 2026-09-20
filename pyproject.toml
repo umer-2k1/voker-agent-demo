@@ -5,6 +5,7 @@ src = ["apps/api/src", "packages/python-sdk/src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["apps/api/tests", "packages/python-sdk/tests"]

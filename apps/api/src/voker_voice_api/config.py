@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str = "postgresql+psycopg://voker:voker_dev@localhost:5432/voker_voice"
     api_prefix: str = "/api"
+    ingest_max_body_bytes: int = 2_000_000
+    ingest_max_events: int = 500
 
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ROOT / ".env",

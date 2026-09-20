@@ -1,92 +1,43 @@
-import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardHeader } from "@/components/ui/card";
 import { SessionsPanel } from "@/components/dashboard/SessionsPanel";
-import { SettingsPage } from "@/pages/SettingsPage";
+import { TracePanel } from "@/components/dashboard/TracePanel";
+import type {
+  Analytics,
+  Overview,
+  SessionPage,
+  Trace,
+  VoiceSession,
+} from "@/components/dashboard/types";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { AccountPage } from "@/pages/AccountPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001";
 const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
 const ingestKey = import.meta.env.VITE_INGEST_KEY as string | undefined;
+const emptyPage: SessionPage = { offset: 0, limit: 30, total: 0 };
 
-type Overview = {
-  project: { name: string; slug: string };
-  metrics: {
-    total_sessions: number;
-    active_sessions: number;
-    error_count: number;
-    average_span_duration_ms: number | null;
-  };
-};
-type Analytics = {
-  session_count: number;
-  completed_session_count: number;
-  outcomes: Record<string, number>;
-  sources: Record<string, number>;
-  cost: { amount_micros: number | null; currency: string | null; record_count: number };
-  voice_impact_cohorts: Record<
-    string,
-    { sample_size: number; resolved: number; resolution_rate: number } | null
-  >;
-  latency: Record<
-    string,
-    { sample_size: number; p50_ms: number; p95_ms: number; max_ms: number } | null
-  >;
-};
-type VoiceSession = {
-  id: string;
-  external_session_id: string;
-  status: string;
-  source: string;
-  started_at: string;
-  error_count: number;
-  event_count: number;
-};
-type Trace = {
-  session: VoiceSession;
-  events: Array<{
-    id: string;
-    event_type: string;
-    status: string;
-    occurred_at: string;
-    duration_ms: number | null;
-    payload: Record<string, unknown>;
-  }>;
-  turns: Array<{
-    id: string;
-    external_turn_id: string;
-    sequence: number;
-    speaker: string;
-    started_at: string;
-    transcript: string | null;
-  }>;
-  errors: Array<{ id: string; type: string; message: string }>;
-  findings: Array<{
-    id: string;
-    certainty: string;
-    severity: string | null;
-    statement: string;
-  }>;
-  analysis_runs: Array<{
-    id: string;
-    status: string;
-    prompt_version: string;
-    model: string | null;
-  }>;
-  recordings: Array<{
-    id: string;
-    source: string;
-    duration_ms: number | null;
-    media_type: string | null;
-    status: string;
-  }>;
-};
-
-type SessionPage = { offset: number; limit: number; total: number };
+async function dashboardRequest<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    credentials: "include",
+    ...init,
+  });
+  if (!response.ok)
+    throw new Error(
+      response.status === 401
+        ? "Sign in required"
+        : "Unable to load dashboard data.",
+    );
+  return response.json() as Promise<T>;
+}
 
 function formatLatency(value: number | null) {
   return value === null
@@ -95,139 +46,120 @@ function formatLatency(value: number | null) {
       ? `${(value / 1000).toFixed(2)} s`
       : `${Math.round(value)} ms`;
 }
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
+
 function formatCost(value: number | null, currency: string | null) {
-  return value === null ? "Unknown" : `${currency ?? "USD"} ${(value / 1_000_000).toFixed(4)}`;
+  return value === null
+    ? "Unknown"
+    : `${currency ?? "USD"} ${(value / 1_000_000).toFixed(4)}`;
 }
+
 function formatRate(value: number) {
   return `${Math.round(value * 100)}%`;
 }
-function turnOffsetSeconds(turn: Trace["turns"][number], session: VoiceSession) {
-  return Math.max(0, (new Date(turn.started_at).getTime() - new Date(session.started_at).getTime()) / 1000);
-}
 
 function DashboardPage() {
-  const overviewQuery = useQuery({ queryKey: ["overview", projectSlug], queryFn: async () => {
-    const response = await fetch(`${apiBaseUrl}/api/projects/${projectSlug}/overview`, { credentials: "include" });
-    if (!response.ok) throw new Error("Unable to load observability data.");
-    return response.json() as Promise<Overview>;
-  }});
-  const analyticsQuery = useQuery({ queryKey: ["analytics", projectSlug], queryFn: async () => {
-    const response = await fetch(`${apiBaseUrl}/api/projects/${projectSlug}/analytics/overview`, { credentials: "include" });
-    if (!response.ok) throw new Error("Unable to load analytics.");
-    return response.json() as Promise<Analytics>;
-  }});
-  const overview = overviewQuery.data ?? null;
-  const analytics = analyticsQuery.data ?? null;
-  const [sessions, setSessions] = useState<VoiceSession[]>([]);
-  const [page, setPage] = useState<SessionPage>({ offset: 0, limit: 30, total: 0 });
-  const [trace, setTrace] = useState<Trace | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const loading = overviewQuery.isPending || analyticsQuery.isPending;
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [search, setSearch] = useState("");
-  const [showRaw, setShowRaw] = useState(false);
-  const [traceFilter, setTraceFilter] = useState<"all" | "agent" | "handoff">("all");
-  const [activeRecordingId, setActiveRecordingId] = useState<string | null>(null);
-  const [playheadSeconds, setPlayheadSeconds] = useState(0);
-  const audioRef = useRef<HTMLAudioElement>(null);
-
-  async function loadTrace(sessionId: string, active = true) {
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/api/projects/${projectSlug}/sessions/${sessionId}`,
-        { credentials: "include" },
+  const [offset, setOffset] = useState(0);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    null,
+  );
+  const overviewQuery = useQuery({
+    queryKey: ["overview", projectSlug],
+    queryFn: () =>
+      dashboardRequest<Overview>(`/api/projects/${projectSlug}/overview`),
+  });
+  const analyticsQuery = useQuery({
+    queryKey: ["analytics", projectSlug],
+    queryFn: () =>
+      dashboardRequest<Analytics>(
+        `/api/projects/${projectSlug}/analytics/overview`,
+      ),
+  });
+  const sessionsQuery = useQuery({
+    queryKey: [
+      "sessions",
+      projectSlug,
+      statusFilter,
+      sourceFilter,
+      search,
+      offset,
+    ],
+    queryFn: () => {
+      const query = new URLSearchParams({
+        limit: "30",
+        offset: String(offset),
+      });
+      if (statusFilter) query.set("status", statusFilter);
+      if (sourceFilter) query.set("source", sourceFilter);
+      if (search.trim()) query.set("search", search.trim());
+      return dashboardRequest<{ items: VoiceSession[]; page: SessionPage }>(
+        `/api/projects/${projectSlug}/sessions?${query}`,
       );
-      if (!response.ok) throw new Error("Unable to load this session trace.");
-      const payload = (await response.json()) as Trace;
-      if (active) {
-        setTrace(payload);
-        setActiveRecordingId((current) =>
-          payload.recordings.some((recording) => recording.id === current && recording.status === "available")
-            ? current
-            : (payload.recordings.find((recording) => recording.status === "available")?.id ?? null),
-        );
-        setPlayheadSeconds(0);
-      }
-    } catch (caught) {
-      if (active)
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "Unable to load session trace.",
-        );
-    }
-  }
-
-  async function requestReanalysis() {
-    if (!trace) return;
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/api/projects/${projectSlug}/sessions/${trace.session.id}/analysis`,
-        { method: "POST", credentials: "include" },
-      );
-      if (!response.ok) throw new Error("Unable to queue re-analysis.");
-      await loadTrace(trace.session.id);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to queue re-analysis.");
-    }
-  }
-
-  async function loadSessions(offset = 0, active = true) {
-    const query = new URLSearchParams({ limit: "30", offset: String(offset) });
-    if (statusFilter) query.set("status", statusFilter);
-    if (sourceFilter) query.set("source", sourceFilter);
-    if (search.trim()) query.set("search", search.trim());
-    const response = await fetch(
-      `${apiBaseUrl}/api/projects/${projectSlug}/sessions?${query}`,
-      { credentials: "include" },
-    );
-    if (!response.ok) throw new Error("Unable to load captured sessions.");
-    const payload = (await response.json()) as { items: VoiceSession[]; page: SessionPage };
-    if (!active) return payload;
-    setSessions(payload.items);
-    setPage(payload.page);
-    return payload;
-  }
+    },
+  });
+  const traceQuery = useQuery({
+    queryKey: [
+      "trace",
+      projectSlug,
+      selectedSessionId ?? sessionsQuery.data?.items[0]?.id,
+    ],
+    queryFn: () =>
+      dashboardRequest<Trace>(
+        `/api/projects/${projectSlug}/sessions/${selectedSessionId ?? sessionsQuery.data?.items[0]?.id}`,
+      ),
+    enabled: Boolean(selectedSessionId ?? sessionsQuery.data?.items[0]?.id),
+  });
+  const reanalysisMutation = useMutation({
+    mutationFn: (sessionId: string) =>
+      dashboardRequest(
+        `/api/projects/${projectSlug}/sessions/${sessionId}/analysis`,
+        { method: "POST" },
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["trace", projectSlug],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["analytics", projectSlug],
+      });
+    },
+  });
+  const overview = overviewQuery.data ?? null;
+  const analytics = analyticsQuery.data ?? null;
+  const sessions = sessionsQuery.data?.items ?? [];
+  const page = sessionsQuery.data?.page ?? emptyPage;
+  const activeSessionId = selectedSessionId ?? sessions[0]?.id ?? null;
+  const trace = traceQuery.data ?? null;
+  const { refetch: refetchTrace } = traceQuery;
+  const liveSessionExternalId = trace?.session.external_session_id;
+  const liveSessionStatus = trace?.session.status;
+  const dashboardError =
+    overviewQuery.error ??
+    analyticsQuery.error ??
+    sessionsQuery.error ??
+    traceQuery.error ??
+    reanalysisMutation.error;
 
   useEffect(() => {
-    let active = true;
-    async function loadDashboard() {
-      try {
-        const nextSessions = await loadSessions(0, active);
-        if (!active) return;
-        if (nextSessions.items[0])
-          await loadTrace(nextSessions.items[0].id, active);
-      } catch (caught) {
-        if (active)
-          setError(
-            caught instanceof Error
-              ? caught.message
-              : "Unable to load dashboard.",
-          );
-      }
-    }
-    void loadDashboard();
-    return () => {
-      active = false;
-    };
-  }, [statusFilter, sourceFilter, search]);
-
-  useEffect(() => {
-    if (!trace || !ingestKey || trace.session.status !== "in_progress") return;
-    const liveSession = trace.session;
+    if (
+      !liveSessionExternalId ||
+      !ingestKey ||
+      liveSessionStatus !== "in_progress"
+    )
+      return;
     const controller = new AbortController();
+    const externalSessionId = liveSessionExternalId;
     async function stream() {
       try {
         const response = await fetch(
-          `${apiBaseUrl}/v1/live/sessions/${encodeURIComponent(liveSession.external_session_id)}`,
-          { headers: { Authorization: `Bearer ${ingestKey}` }, signal: controller.signal },
+          `${apiBaseUrl}/v1/live/sessions/${encodeURIComponent(externalSessionId)}`,
+          {
+            headers: { Authorization: `Bearer ${ingestKey}` },
+            signal: controller.signal,
+          },
         );
         if (!response.ok || !response.body) return;
         const reader = response.body.getReader();
@@ -235,32 +167,21 @@ function DashboardPage() {
         while (!controller.signal.aborted) {
           const { done, value } = await reader.read();
           if (done) break;
-          if (decoder.decode(value).includes("event: trace")) await loadTrace(liveSession.id);
+          if (decoder.decode(value).includes("event: trace"))
+            await refetchTrace();
         }
-      } catch (caught) {
-        if (!(caught instanceof DOMException && caught.name === "AbortError")) return;
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError"))
+          return;
       }
     }
     void stream();
     return () => controller.abort();
-  }, [trace?.session.id, trace?.session.status]);
+  }, [liveSessionExternalId, liveSessionStatus, refetchTrace]);
 
-  const visibleEvents = trace?.events.filter((event) => {
-    if (traceFilter === "all") return true;
-    if (traceFilter === "handoff") return event.event_type === "agent.handoff";
-    return event.event_type.startsWith("agent.") || event.event_type.startsWith("graph.");
-  });
-  const activeRecording = trace?.recordings.find((recording) => recording.id === activeRecordingId);
-
-  function seekToTurn(turn: Trace["turns"][number]) {
-    if (!trace || !audioRef.current || !activeRecording) return;
-    const offset = turnOffsetSeconds(turn, trace.session);
-    audioRef.current.currentTime = offset;
-    setPlayheadSeconds(offset);
-    void audioRef.current.play();
-  }
-
-
+  const signInRequired =
+    dashboardError instanceof Error &&
+    dashboardError.message === "Sign in required";
   return (
     <main className="product-shell">
       <aside className="sidebar">
@@ -282,8 +203,12 @@ function DashboardPage() {
           <a className="nav-item" href="#insights">
             Intelligence
           </a>
-          <Link className="nav-item" to="/settings">Project settings</Link>
-          <Link className="nav-item" to="/account">Account</Link>
+          <Link className="nav-item" to="/settings">
+            Project settings
+          </Link>
+          <Link className="nav-item" to="/account">
+            Account
+          </Link>
         </nav>
         <div className="sidebar-foot">
           {overview?.project.name ?? "Voker Voice"}
@@ -301,9 +226,16 @@ function DashboardPage() {
             <i /> Live data
           </Badge>
         </header>
-        {error ? (
+        {dashboardError ? (
           <div className="connection-error" role="alert">
-            {error} Start the API at <code>127.0.0.1:8001</code> and refresh.
+            {dashboardError.message}.{" "}
+            {signInRequired ? (
+              <Link to="/login">Sign in with Google</Link>
+            ) : (
+              <>
+                Start the API at <code>127.0.0.1:8001</code> and refresh.
+              </>
+            )}
           </div>
         ) : null}
         <section className="metric-grid" aria-label="Project metrics">
@@ -328,7 +260,10 @@ function DashboardPage() {
           />
           <Metric
             label="Tracked cost"
-            value={formatCost(analytics?.cost.amount_micros ?? null, analytics?.cost.currency ?? null)}
+            value={formatCost(
+              analytics?.cost.amount_micros ?? null,
+              analytics?.cost.currency ?? null,
+            )}
           />
         </section>
         <section className="insight-banner" id="insights">
@@ -343,6 +278,10 @@ function DashboardPage() {
           </div>
           <span>{trace?.findings.length ?? 0} evidence-backed findings</span>
         </section>
+        <section className="analytics-grid" aria-label="Voice impact analytics">
+          <ImpactChart latency={analytics?.latency ?? null} />
+          <OutcomeChart outcomes={analytics?.outcomes ?? null} />
+        </section>
         <section className="cohort-grid" aria-label="Voice Impact cohorts">
           <CohortCard
             label="High interruptions"
@@ -352,185 +291,48 @@ function DashboardPage() {
             label="Normal interruptions"
             cohort={analytics?.voice_impact_cohorts.normal_interruption ?? null}
           />
-          <CohortCard label="Slow STT" cohort={analytics?.voice_impact_cohorts.slow_stt ?? null} />
-          <CohortCard label="Fast STT" cohort={analytics?.voice_impact_cohorts.fast_stt ?? null} />
-        </section>
-        <section className="cohort-grid" aria-label="Stage latency percentiles">
-          <LatencyCard label="STT latency" value={analytics?.latency.stt ?? null} />
-          <LatencyCard label="LLM latency" value={analytics?.latency.llm ?? null} />
-          <LatencyCard label="Tool latency" value={analytics?.latency.tool ?? null} />
-          <LatencyCard label="TTS latency" value={analytics?.latency.tts ?? null} />
+          <CohortCard
+            label="Slow STT"
+            cohort={analytics?.voice_impact_cohorts.slow_stt ?? null}
+          />
+          <CohortCard
+            label="Fast STT"
+            cohort={analytics?.voice_impact_cohorts.fast_stt ?? null}
+          />
         </section>
         <section className="workspace-grid">
-          {/* SessionsPanel owns the filter, list, empty, skeleton, and pagination views. */}
-          <SessionsPanel sessions={sessions} page={page} loading={loading} selectedId={trace?.session.id} search={search} status={statusFilter} source={sourceFilter} onSearch={setSearch} onStatus={setStatusFilter} onSource={setSourceFilter} onSelect={(id) => void loadTrace(id)} onPage={(offset) => void loadSessions(offset)} />
-          {/*
-          <Card className="panel sessions-panel" id="sessions">
-            <CardHeader className="panel-heading">
-              <div>
-                <p className="eyebrow">Recent activity</p>
-                <h2>Captured sessions</h2>
-              </div>
-              <span>{page.total} captured</span>
-            </CardHeader>
-            {loading ? <LoadingSkeleton rows={5} /> : null}
-            {!loading && !sessions.length ? (
-              <p className="empty-state">
-                No sessions yet. Connect the Python SDK or send canonical events
-                to begin.
-              </p>
-            ) : null}
-            <div className="session-filters">
-              <input aria-label="Search sessions" placeholder="Search session ID" value={search} onChange={(event) => setSearch(event.target.value)} />
-              <select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="failed">Failed</option></select>
-              <input aria-label="Filter by source" placeholder="Source" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} />
-            </div>
-            <div className="session-list">
-              {sessions.map((session) => (
-                <button
-                  key={session.id}
-                  className={`session-row ${trace?.session.id === session.id ? "selected" : ""}`}
-                  onClick={() => void loadTrace(session.id)}
-                >
-                  <span
-                    className={`status-dot ${session.error_count ? "error" : session.status}`}
-                  />
-                  <span className="session-name">
-                    {session.external_session_id}
-                    <small>
-                      {session.source} · {formatDate(session.started_at)}
-                    </small>
-                  </span>
-                  <span className="session-events">
-                    {session.event_count} events
-                    <small>
-                      {session.error_count
-                        ? `${session.error_count} errors`
-                        : session.status}
-                    </small>
-                  </span>
-                </button>
-              ))}
-            </div>
-            {page.total > page.limit ? <div className="pagination"><button disabled={page.offset === 0} onClick={() => void loadSessions(Math.max(0, page.offset - page.limit))}>Previous</button><span>{page.offset + 1}–{Math.min(page.offset + page.limit, page.total)} of {page.total}</span><button disabled={page.offset + page.limit >= page.total} onClick={() => void loadSessions(page.offset + page.limit)}>Next</button></div> : null}
-          </Card>*/}
-          <Card className="panel trace-panel" id="trace">
-            <CardHeader className="panel-heading">
-              <div>
-                <p className="eyebrow">Complete conversation trace</p>
-                <h2>
-                  {trace
-                    ? trace.session.external_session_id
-                    : "Select a session"}
-                </h2>
-              </div>
-              <span>{trace?.events.length ?? 0} events</span>
-            </CardHeader>
-            {!trace ? (
-              <p className="empty-state">
-                Choose a persisted session to inspect its timeline.
-              </p>
-            ) : (
-              <>
-                <section className="transcript-panel" aria-label="Transcript">
-                  <p className="eyebrow">Transcript</p>
-                  {activeRecording ? (
-                    <div className="recording-player">
-                      <div>
-                        <b>Call recording</b>
-                        <small>{activeRecording.source} · {formatLatency(activeRecording.duration_ms)}</small>
-                      </div>
-                      <audio
-                        controls
-                        onTimeUpdate={(event) => setPlayheadSeconds(event.currentTarget.currentTime)}
-                        preload="metadata"
-                        ref={audioRef}
-                        src={`${apiBaseUrl}/api/projects/${projectSlug}/sessions/${trace.session.id}/recordings/${activeRecording.id}/playback`}
-                      />
-                    </div>
-                  ) : trace.recordings.length ? (
-                    <p className="analysis-pending">Recording {trace.recordings[0].status}; playback is unavailable.</p>
-                  ) : null}
-                  {trace.turns.length ? trace.turns.map((turn, index) => {
-                    const offset = turnOffsetSeconds(turn, trace.session);
-                    const nextTurn = trace.turns[index + 1];
-                    const isActive = activeRecording && playheadSeconds >= offset && (!nextTurn || playheadSeconds < turnOffsetSeconds(nextTurn, trace.session));
-                    return <button className={`transcript-turn ${isActive ? "playing" : ""}`} disabled={!activeRecording} key={turn.id} onClick={() => seekToTurn(turn)}><b>{turn.speaker} · {formatLatency(offset * 1000)}</b><span>{turn.transcript ?? "No transcript captured"}</span></button>;
-                  }) : <p className="analysis-pending">No transcript was captured for this trace.</p>}
-                </section>
-                <div className="finding-list">
-                  {trace.findings.length ? (
-                    trace.findings.map((finding) => (
-                      <div className="finding" key={finding.id}>
-                        <b>{finding.severity ?? finding.certainty}</b>
-                        {finding.statement}
-                      </div>
-                    ))
-                  ) : (
-                    <p className="analysis-pending">
-                      No analysis findings yet. The trace below remains the
-                      source of truth.
-                    </p>
-                  )}
-                </div>
-                <div className="analysis-history">
-                  <div>
-                    <p className="eyebrow">Analysis history</p>
-                    <span>{trace.analysis_runs.length} immutable runs</span>
-                  </div>
-                  <button onClick={() => void requestReanalysis()}>Re-analyze</button>
-                  {trace.analysis_runs.slice(0, 3).map((run) => (
-                    <small key={run.id}>
-                      {run.status} · {run.prompt_version}
-                      {run.model ? ` · ${run.model}` : ""}
-                    </small>
-                  ))}
-                </div>
-                <div className="trace-filters" aria-label="Trace event filters">
-                  <button
-                    className={traceFilter === "all" ? "selected" : ""}
-                    onClick={() => setTraceFilter("all")}
-                  >
-                    All events
-                  </button>
-                  <button
-                    className={traceFilter === "agent" ? "selected" : ""}
-                    onClick={() => setTraceFilter("agent")}
-                  >
-                    Graph & agents
-                  </button>
-                  <button
-                    className={traceFilter === "handoff" ? "selected" : ""}
-                    onClick={() => setTraceFilter("handoff")}
-                  >
-                    Handoffs
-                  </button>
-                </div>
-                <ol className="timeline">
-                  {visibleEvents?.map((event) => (
-                    <li key={event.id}>
-                      <span className={`timeline-dot ${event.status}`} />
-                      <div>
-                        <b>{event.event_type}</b>
-                        <small>
-                          {formatDate(event.occurred_at)} ·{" "}
-                          {formatLatency(event.duration_ms)}
-                        </small>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-                {trace.errors.map((item) => (
-                  <div className="trace-error" key={item.id}>
-                    <b>{item.type}</b>
-                    {item.message}
-                  </div>
-                ))}
-                <button className="raw-toggle" onClick={() => setShowRaw(!showRaw)} aria-expanded={showRaw}>{showRaw ? "Hide" : "Inspect"} normalized events</button>
-                {showRaw ? <pre className="raw-inspector">{JSON.stringify(trace.events, null, 2)}</pre> : null}
-              </>
-            )}
-          </Card>
+          <SessionsPanel
+            sessions={sessions}
+            page={page}
+            loading={sessionsQuery.isPending}
+            selectedId={activeSessionId ?? undefined}
+            search={search}
+            status={statusFilter}
+            source={sourceFilter}
+            onSearch={(value) => {
+              setSearch(value);
+              setOffset(0);
+            }}
+            onStatus={(value) => {
+              setStatusFilter(value);
+              setOffset(0);
+            }}
+            onSource={(value) => {
+              setSourceFilter(value);
+              setOffset(0);
+            }}
+            onSelect={setSelectedSessionId}
+            onPage={setOffset}
+          />
+          <TracePanel
+            trace={trace}
+            apiBaseUrl={apiBaseUrl}
+            projectSlug={projectSlug}
+            reanalyzing={reanalysisMutation.isPending}
+            onReanalyze={() =>
+              trace && reanalysisMutation.mutate(trace.session.id)
+            }
+          />
         </section>
       </section>
     </main>
@@ -538,7 +340,16 @@ function DashboardPage() {
 }
 
 export function App() {
-  return <BrowserRouter><Routes><Route path="/login" element={<LoginPage />} /><Route path="/settings" element={<SettingsPage />} /><Route path="/account" element={<AccountPage />} /><Route path="*" element={<DashboardPage />} /></Routes></BrowserRouter>;
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/account" element={<AccountPage />} />
+        <Route path="*" element={<DashboardPage />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
 function CohortCard({
@@ -566,26 +377,63 @@ function CohortCard({
   );
 }
 
-function LatencyCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: { sample_size: number; p50_ms: number; p95_ms: number } | null;
-}) {
+function ImpactChart({ latency }: { latency: Analytics["latency"] | null }) {
+  const entries = Object.entries(latency ?? {}).filter(([, value]) => value);
+  const max = Math.max(...entries.map(([, value]) => value?.p95_ms ?? 0), 1);
   return (
-    <Card className="cohort-card">
-      <p>{label}</p>
-      {value ? (
-        <>
-          <strong>p50 {formatLatency(value.p50_ms)}</strong>
-          <span>p95 {formatLatency(value.p95_ms)} · {value.sample_size} observed spans</span>
-        </>
+    <Card className="chart-card">
+      <p className="eyebrow">Stage latency</p>
+      <h2>p95 across captured spans</h2>
+      {entries.length ? (
+        <div className="bar-chart">
+          {entries.map(([stage, value]) => (
+            <div className="bar-row" key={stage}>
+              <span>{stage.toUpperCase()}</span>
+              <div>
+                <i
+                  style={{
+                    width: `${Math.max(8, ((value?.p95_ms ?? 0) / max) * 100)}%`,
+                  }}
+                />
+              </div>
+              <b>{formatLatency(value?.p95_ms ?? null)}</b>
+            </div>
+          ))}
+        </div>
       ) : (
-        <>
-          <strong>No observed latency</strong>
-          <span>Missing spans are not treated as zero</span>
-        </>
+        <p className="empty-state">
+          Latency bars appear after spans are captured.
+        </p>
+      )}
+    </Card>
+  );
+}
+
+function OutcomeChart({
+  outcomes,
+}: {
+  outcomes: Record<string, number> | null;
+}) {
+  const entries = Object.entries(outcomes ?? {});
+  const total = entries.reduce((sum, [, count]) => sum + count, 0);
+  return (
+    <Card className="chart-card">
+      <p className="eyebrow">Session outcomes</p>
+      <h2>Captured result mix</h2>
+      {total ? (
+        <div className="outcome-list">
+          {entries.map(([outcome, count]) => (
+            <div key={outcome}>
+              <span>{outcome}</span>
+              <b>{count}</b>
+              <i style={{ width: `${(count / total) * 100}%` }} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-state">
+          Outcome mix appears after completed sessions are captured.
+        </p>
       )}
     </Card>
   );

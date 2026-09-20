@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from voker_voice_api.config import get_settings
 from voker_voice_api.database import get_db
-from voker_voice_api.models import User
+from voker_voice_api.models import Organization, OrganizationMember, User
 
 router = APIRouter(prefix="/auth", tags=["account"])
 
@@ -53,9 +53,23 @@ async def google_callback(request: Request, db: Session = Depends(get_db)) -> Re
     if user is None:
         user = User(email=email, google_subject=subject, display_name=claims.get("name"))
         db.add(user)
+        db.flush()
     else:
         user.google_subject = subject
         user.display_name = claims.get("name") or user.display_name
+    if get_settings().app_env == "development":
+        organization = db.scalar(
+            select(Organization).where(Organization.name == "Voker Development")
+        )
+        if organization is not None and db.scalar(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == organization.id,
+                OrganizationMember.user_id == user.id,
+            )
+        ) is None:
+            db.add(
+                OrganizationMember(organization_id=organization.id, user_id=user.id, role="owner")
+            )
     db.commit()
     request.session["user_id"] = str(user.id)
     return RedirectResponse(url="/", status_code=303)
@@ -63,11 +77,18 @@ async def google_callback(request: Request, db: Session = Depends(get_db)) -> Re
 
 @router.get("/me")
 def current_account(request: Request, db: Session = Depends(get_db)) -> dict[str, str | None]:
+    user = require_dashboard_user(request, db)
+    return {"id": str(user.id), "email": user.email, "display_name": user.display_name}
+
+
+def require_dashboard_user(request: Request, db: Session = Depends(get_db)) -> User:
+    """Require an authenticated signed browser session for dashboard data."""
+
     user_id = request.session.get("user_id")
     user = db.get(User, user_id) if user_id else None
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in required")
-    return {"id": str(user.id), "email": user.email, "display_name": user.display_name}
+    return user
 
 
 @router.post("/logout")

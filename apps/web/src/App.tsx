@@ -4,7 +4,7 @@ import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
-import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
+import { SessionsPanel } from "@/components/dashboard/SessionsPanel";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { AccountPage } from "@/pages/AccountPage";
 import { LoginPage } from "@/pages/LoginPage";
@@ -362,6 +362,9 @@ function DashboardPage() {
           <LatencyCard label="TTS latency" value={analytics?.latency.tts ?? null} />
         </section>
         <section className="workspace-grid">
+          {/* SessionsPanel owns the filter, list, empty, skeleton, and pagination views. */}
+          <SessionsPanel sessions={sessions} page={page} loading={loading} selectedId={trace?.session.id} search={search} status={statusFilter} source={sourceFilter} onSearch={setSearch} onStatus={setStatusFilter} onSource={setSourceFilter} onSelect={(id) => void loadTrace(id)} onPage={(offset) => void loadSessions(offset)} />
+          {/*
           <Card className="panel sessions-panel" id="sessions">
             <CardHeader className="panel-heading">
               <div>
@@ -410,7 +413,7 @@ function DashboardPage() {
               ))}
             </div>
             {page.total > page.limit ? <div className="pagination"><button disabled={page.offset === 0} onClick={() => void loadSessions(Math.max(0, page.offset - page.limit))}>Previous</button><span>{page.offset + 1}–{Math.min(page.offset + page.limit, page.total)} of {page.total}</span><button disabled={page.offset + page.limit >= page.total} onClick={() => void loadSessions(page.offset + page.limit)}>Next</button></div> : null}
-          </Card>
+          </Card>*/}
           <Card className="panel trace-panel" id="trace">
             <CardHeader className="panel-heading">
               <div>

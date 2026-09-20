@@ -27,7 +27,7 @@ implemented, verified locally, and committed to `main`; an unchecked item remain
 | 3 — Python SDK | Complete vertical slice | Fail-open queued exporter, redaction, nested spans, tools/MCP and handoffs. |
 | 4 — Trace dashboard | Complete | Live trace refresh, transcript projection, normalized-event inspector, bounded session queries, filters, and pagination are implemented. |
 | 5 — LiveKit | In progress | Public AgentSession observer maps lifecycle, transcript, interruption, talk-over, metrics, and playback events with regression coverage; hosted voice E2E remains. |
-| 6 — LangGraph | In progress | Public callback graph-node tracing, graph-transition handoffs, retry signals, and interrupt telemetry are covered; resume and parallel execution cases remain. |
+| 6 — LangGraph | In progress | Public callback graph-node tracing, graph-transition handoffs, retry signals, interrupt telemetry, and parallel child-span relationships are covered; resume behavior remains. |
 | 7 — Intelligence | In progress | Deterministic evidence-linked worker now covers errors, cancellation/timeouts, slow stages, interruptions, and talk-over; the evidence-validated OpenRouter evaluator records immutable completed/disabled runs, while live semantic E2E and controlled re-analysis remain. |
 | 8 — Vapi | In progress | Payload normalizer and canonical error mapping implemented; authenticated webhook route/E2E remains. |
 | 9 — Retell | In progress | Payload normalizer and canonical error mapping implemented; authenticated webhook route/E2E remains. |

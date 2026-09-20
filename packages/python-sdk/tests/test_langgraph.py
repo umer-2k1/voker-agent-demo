@@ -54,3 +54,18 @@ def test_observed_graph_records_an_interrupt_without_suppressing_it() -> None:
             observe_langgraph(InterruptedGraph(), session).invoke({})
     event = next(event for event in sink.events if event["event_type"] == "graph.interrupted")
     assert event["status"] == "cancelled"
+
+
+def test_langgraph_callback_keeps_parallel_children_under_one_parent() -> None:
+    sink = MemoryEventSink()
+    with VokerVoice(event_sink=sink, enabled=True).session(agent="voice-router") as session:
+        callback = VokerLangGraphCallback(session)
+        parent, first, second = uuid4(), uuid4(), uuid4()
+        callback.on_chain_start({"name": "router"}, {}, run_id=parent)
+        callback.on_chain_start({"name": "billing"}, {}, run_id=first, parent_run_id=parent)
+        callback.on_chain_start({"name": "calendar"}, {}, run_id=second, parent_run_id=parent)
+        callback.on_chain_end({}, run_id=second)
+        callback.on_chain_end({}, run_id=first)
+    starts = [event for event in sink.events if event["event_type"] == "graph.node.started"]
+    assert starts[1]["parent_span_id"] == starts[0]["span_id"]
+    assert starts[2]["parent_span_id"] == starts[0]["span_id"]

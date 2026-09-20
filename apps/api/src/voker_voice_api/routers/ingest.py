@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from voker_voice_api.auth import require_ingest_context
+from voker_voice_api.auth import authenticate_ingest_key, raw_ingest_key, require_ingest_context
 from voker_voice_api.config import get_settings
 from voker_voice_api.database import get_db
 from voker_voice_api.ingestion import (
@@ -61,7 +61,6 @@ async def decode_json_body(request: Request) -> dict[str, Any]:
 @router.post("/events/batch", response_model=EventBatchResponse)
 async def create_event_batch(
     request: Request,
-    context: IngestContext = Depends(require_ingest_context),
     db: Session = Depends(get_db),
 ) -> EventBatchResponse:
     try:
@@ -73,6 +72,9 @@ async def create_event_batch(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Too many events"
         )
 
+    # Read and validate the potentially-compressed request before querying the database.
+    # This keeps the voice SDK responsive when the database has a short transient delay.
+    context = authenticate_ingest_key(raw_ingest_key(request), db)
     response = ingest_batch(db, context, batch.events)
     db.commit()
     accepted_ids = {item.event_id for item in response.items if item.status == "accepted"}

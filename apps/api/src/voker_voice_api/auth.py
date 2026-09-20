@@ -19,9 +19,7 @@ def raw_ingest_key(request: Request, x_voker_api_key: str | None = Header(defaul
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Voker ingest key")
 
 
-def require_ingest_context(
-    key: str = Depends(raw_ingest_key), db: Session = Depends(get_db)
-) -> IngestContext:
+def authenticate_ingest_key(key: str, db: Session) -> IngestContext:
     api_key = db.scalar(select(APIKey).where(APIKey.secret_hash == hash_api_key(key)))
     now = datetime.now(UTC)
     if api_key is None or api_key.revoked_at is not None:
@@ -33,5 +31,11 @@ def require_ingest_context(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Expired Voker ingest key"
         )
     api_key.last_used_at = now
-    db.commit()
     return IngestContext(api_key=api_key)
+
+
+def require_ingest_context(
+    key: str = Depends(raw_ingest_key), db: Session = Depends(get_db)
+) -> IngestContext:
+    """Dependency form for routes that do not need to read a request body first."""
+    return authenticate_ingest_key(key, db)

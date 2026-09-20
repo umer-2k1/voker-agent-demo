@@ -4,6 +4,7 @@ import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
+import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { AccountPage } from "@/pages/AccountPage";
 import { LoginPage } from "@/pages/LoginPage";
@@ -369,9 +370,7 @@ function DashboardPage() {
               </div>
               <span>{page.total} captured</span>
             </CardHeader>
-            {loading ? (
-              <p className="empty-state">Loading persisted sessions…</p>
-            ) : null}
+            {loading ? <LoadingSkeleton rows={5} /> : null}
             {!loading && !sessions.length ? (
               <p className="empty-state">
                 No sessions yet. Connect the Python SDK or send canonical events

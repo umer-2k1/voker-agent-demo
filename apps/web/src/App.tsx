@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader } from "@/components/ui/card";
+
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001";
 const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
 
@@ -148,9 +151,9 @@ export function App() {
             <p className="eyebrow">Voice-agent observability</p>
             <h1>Voice-agent intelligence, built on trustworthy traces.</h1>
           </div>
-          <span className="live-indicator">
+          <Badge className="live-indicator">
             <i /> Live data
-          </span>
+          </Badge>
         </header>
         {error ? (
           <div className="connection-error" role="alert">
@@ -191,14 +194,14 @@ export function App() {
           <span>{trace?.findings.length ?? 0} evidence-backed findings</span>
         </section>
         <section className="workspace-grid">
-          <article className="panel sessions-panel" id="sessions">
-            <div className="panel-heading">
+          <Card className="panel sessions-panel" id="sessions">
+            <CardHeader className="panel-heading">
               <div>
                 <p className="eyebrow">Recent activity</p>
                 <h2>Captured sessions</h2>
               </div>
               <span>{sessions.length} shown</span>
-            </div>
+            </CardHeader>
             {loading ? (
               <p className="empty-state">Loading persisted sessions…</p>
             ) : null}
@@ -235,9 +238,9 @@ export function App() {
                 </button>
               ))}
             </div>
-          </article>
-          <article className="panel trace-panel" id="trace">
-            <div className="panel-heading">
+          </Card>
+          <Card className="panel trace-panel" id="trace">
+            <CardHeader className="panel-heading">
               <div>
                 <p className="eyebrow">Complete conversation trace</p>
                 <h2>
@@ -247,7 +250,7 @@ export function App() {
                 </h2>
               </div>
               <span>{trace?.events.length ?? 0} events</span>
-            </div>
+            </CardHeader>
             {!trace ? (
               <p className="empty-state">
                 Choose a persisted session to inspect its timeline.
@@ -291,7 +294,7 @@ export function App() {
                 ))}
               </>
             )}
-          </article>
+          </Card>
         </section>
       </section>
     </main>
@@ -308,10 +311,10 @@ function Metric({
   danger?: boolean;
 }) {
   return (
-    <article className={`metric-card ${danger ? "danger" : ""}`}>
+    <Card className={`metric-card ${danger ? "danger" : ""}`}>
       <p>{label}</p>
       <strong>{value}</strong>
       <span>From captured traces</span>
-    </article>
+    </Card>
   );
 }

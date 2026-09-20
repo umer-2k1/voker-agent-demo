@@ -144,6 +144,7 @@ h2 {
   padding: 14px 16px;
 }
 .settings-page { margin: 0 auto; max-width: 860px; padding: 48px 32px; }
+.login-page { align-items: center; background: #eaf5f3; display: flex; justify-content: center; min-height: 100vh; padding: 24px; }.login-card { background: white; border: 1px solid #ddeaed; border-radius: 14px; box-shadow: var(--shadow-card); max-width: 430px; padding: 36px; }.login-card h1 { font-size: 30px; }.login-card p:not(.eyebrow) { color: #64748b; line-height: 1.5; }.google-login { background: #004d43; border-radius: 8px; color: white; display: inline-block; font-weight: 700; margin-top: 16px; padding: 11px 14px; text-decoration: none; }
 .settings-copy { color: #64748b; margin: 10px 0 24px; }
 .key-form { display: flex; gap: 8px; margin: 20px 0; }
 .key-form input { border: 1px solid #d5e2df; border-radius: 8px; font: inherit; padding: 10px; }

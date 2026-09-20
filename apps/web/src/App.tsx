@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { AccountPage } from "@/pages/AccountPage";
+import { LoginPage } from "@/pages/LoginPage";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001";
 const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -534,7 +535,7 @@ function DashboardPage() {
 }
 
 export function App() {
-  return <BrowserRouter><Routes><Route path="/settings" element={<SettingsPage />} /><Route path="/account" element={<AccountPage />} /><Route path="*" element={<DashboardPage />} /></Routes></BrowserRouter>;
+  return <BrowserRouter><Routes><Route path="/login" element={<LoginPage />} /><Route path="/settings" element={<SettingsPage />} /><Route path="/account" element={<AccountPage />} /><Route path="*" element={<DashboardPage />} /></Routes></BrowserRouter>;
 }
 
 function CohortCard({

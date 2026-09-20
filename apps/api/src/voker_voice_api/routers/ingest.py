@@ -1,4 +1,5 @@
 import gzip
+import hashlib
 import hmac
 import json
 import uuid
@@ -111,7 +112,7 @@ async def receive_authenticated_webhook(
     provider: str,
     integration_id: uuid.UUID,
     request: Request,
-    x_provider_delivery_id: str = Header(min_length=1),
+    x_provider_delivery_id: str | None = Header(default=None),
     x_voker_webhook_token: str = Header(min_length=1),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
@@ -131,17 +132,20 @@ async def receive_authenticated_webhook(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook token"
         )
     raw = await decode_json_body(request)
+    delivery_id = x_provider_delivery_id or hashlib.sha256(
+        json.dumps(raw, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
     duplicate = db.scalar(
         select(WebhookReceipt.id).where(
             WebhookReceipt.integration_id == integration.id,
-            WebhookReceipt.provider_delivery_id == x_provider_delivery_id,
+            WebhookReceipt.provider_delivery_id == delivery_id,
         )
     )
     if duplicate is not None:
         return {"status": "duplicate"}
     receipt = WebhookReceipt(
         integration_id=integration.id,
-        provider_delivery_id=x_provider_delivery_id,
+        provider_delivery_id=delivery_id,
         signature_valid=True,
         payload=raw,
     )

@@ -26,6 +26,15 @@ class SemanticResult(BaseModel):
     findings: list[SemanticFinding] = Field(max_length=5)
 
 
+def parse_semantic_result(content: str) -> SemanticResult:
+    """Accept common fenced JSON while retaining Pydantic's strict schema validation."""
+
+    candidate = content.strip()
+    if candidate.startswith("```") and candidate.endswith("```"):
+        candidate = candidate.split("\n", maxsplit=1)[1].rsplit("\n", maxsplit=1)[0]
+    return SemanticResult.model_validate_json(candidate)
+
+
 def evaluate_session(db: Session, *, session_id: uuid.UUID) -> int:
     settings = get_settings()
     session = db.get(VoiceSession, session_id)
@@ -61,13 +70,12 @@ def evaluate_session(db: Session, *, session_id: uuid.UUID) -> int:
         json={
             "model": settings.openrouter_model,
             "temperature": 0,
-            "response_format": {"type": "json_object"},
             "messages": [
                 {
                     "role": "system",
                     "content": (
-                        "Return JSON with outcome, summary, findings. Every finding must cite only "
-                        "supplied event IDs. Do not claim causation."
+                        "Return exactly one valid JSON object with outcome, summary, findings. "
+                        "Every finding must cite only supplied event IDs. Do not claim causation."
                     ),
                 },
                 {"role": "user", "content": str(evidence)[:60000]},
@@ -76,7 +84,7 @@ def evaluate_session(db: Session, *, session_id: uuid.UUID) -> int:
         timeout=30,
     )
     response.raise_for_status()
-    result = SemanticResult.model_validate_json(response.json()["choices"][0]["message"]["content"])
+    result = parse_semantic_result(response.json()["choices"][0]["message"]["content"])
     valid = {item.event_id: item.id for item in events}
     created = 0
     for candidate in result.findings:

@@ -472,3 +472,30 @@ def attach_recording_metadata(
     db.add(recording)
     db.commit()
     return {"id": str(recording.id), "status": recording.status}
+
+
+@router.delete("/projects/{project_slug}/sessions/{session_id}/recordings/{recording_id}")
+def delete_recording_metadata(
+    project_slug: str,
+    session_id: str,
+    recording_id: str,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Revoke optional recording access without deleting canonical trace data."""
+
+    project = project_for_slug(db, project_slug)
+    recording = db.scalar(
+        select(Recording)
+        .join(VoiceSession, Recording.session_id == VoiceSession.id)
+        .where(
+            VoiceSession.project_id == project.id,
+            VoiceSession.id == session_id,
+            Recording.id == recording_id,
+        )
+    )
+    if recording is None:
+        raise HTTPException(status_code=404, detail="Recording not found")
+    recording.asset_reference = None
+    recording.status = "deleted"
+    db.commit()
+    return {"id": str(recording.id), "status": recording.status}

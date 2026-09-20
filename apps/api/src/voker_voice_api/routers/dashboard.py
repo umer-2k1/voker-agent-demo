@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from voker_voice_api.analytics import CohortValue, voice_impact_cohorts
 from voker_voice_api.database import get_db
 from voker_voice_api.models import (
     AnalysisRun,
@@ -179,6 +180,29 @@ def analytics_overview(project_slug: str, db: Session = Depends(get_db)) -> dict
             .where(VoiceSession.project_id == project.id)
         )
     )
+    events_by_session: dict[object, list[Event]] = {item.id: [] for item in sessions}
+    if sessions:
+        events = db.scalars(select(Event).where(Event.session_id.in_(events_by_session))).all()
+        for event in events:
+            events_by_session[event.session_id].append(event)
+    cohort_values = []
+    for item in sessions:
+        events = events_by_session[item.id]
+        stt_durations = [
+            float(event.duration_ms)
+            for event in events
+            if event.event_type == "stt.completed" and event.duration_ms is not None
+        ]
+        cohort_values.append(
+            CohortValue(
+                key=str(item.id),
+                outcome=item.outcome,
+                interruption_count=sum(
+                    event.event_type == "voice.interruption" for event in events
+                ),
+                stt_duration_ms=max(stt_durations) if stt_durations else None,
+            )
+        )
     return {
         "session_count": len(sessions),
         "completed_session_count": len(completed),
@@ -190,6 +214,7 @@ def analytics_overview(project_slug: str, db: Session = Depends(get_db)) -> dict
             "record_count": len(costs),
             "estimated_record_count": sum(1 for item in costs if item.is_estimate),
         },
+        "voice_impact_cohorts": voice_impact_cohorts(cohort_values),
     }
 
 

@@ -263,6 +263,20 @@ h2 {
   height: 55px;
   margin: 8px 0;
 }
+.skeleton-metrics .skeleton-list {
+  display: contents;
+}
+.skeleton-metrics .skeleton-list i {
+  height: 102px;
+  margin: 0;
+}
+.overview-skeleton {
+  background: white;
+  border: 1px solid #e0e9e7;
+  border-radius: 12px;
+  margin: 24px 0;
+  padding: 16px;
+}
 .metric-grid {
   display: grid;
   gap: 16px;

@@ -205,6 +205,19 @@ h2 {
   padding: 8px 12px;
   white-space: nowrap;
 }
+.cohort-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 0 24px;
+}
+.cohort-card {
+  min-height: 104px;
+  padding: 16px;
+}
+.cohort-card p { color: #607a76; font-size: 12px; margin-bottom: 8px; }
+.cohort-card strong { color: #173c36; display: block; font-size: 16px; letter-spacing: -0.02em; }
+.cohort-card span { color: #829a95; display: block; font-size: 11px; margin-top: 5px; }
 .workspace-grid {
   display: grid;
   gap: 16px;
@@ -470,6 +483,7 @@ h2 {
   .metric-grid {
     grid-template-columns: 1fr 1fr;
   }
+  .cohort-grid { grid-template-columns: 1fr 1fr; }
   .workspace-grid {
     grid-template-columns: 1fr;
   }
@@ -488,4 +502,5 @@ h2 {
   .metric-grid {
     grid-template-columns: 1fr;
   }
+  .cohort-grid { grid-template-columns: 1fr; }
 }

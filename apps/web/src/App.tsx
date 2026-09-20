@@ -22,6 +22,10 @@ type Analytics = {
   outcomes: Record<string, number>;
   sources: Record<string, number>;
   cost: { amount_micros: number | null; currency: string | null; record_count: number };
+  voice_impact_cohorts: Record<
+    string,
+    { sample_size: number; resolved: number; resolution_rate: number } | null
+  >;
 };
 type VoiceSession = {
   id: string;
@@ -82,6 +86,9 @@ function formatDate(value: string) {
 }
 function formatCost(value: number | null, currency: string | null) {
   return value === null ? "Unknown" : `${currency ?? "USD"} ${(value / 1_000_000).toFixed(4)}`;
+}
+function formatRate(value: number) {
+  return `${Math.round(value * 100)}%`;
 }
 
 export function App() {
@@ -294,6 +301,18 @@ export function App() {
           </div>
           <span>{trace?.findings.length ?? 0} evidence-backed findings</span>
         </section>
+        <section className="cohort-grid" aria-label="Voice Impact cohorts">
+          <CohortCard
+            label="High interruptions"
+            cohort={analytics?.voice_impact_cohorts.high_interruption ?? null}
+          />
+          <CohortCard
+            label="Normal interruptions"
+            cohort={analytics?.voice_impact_cohorts.normal_interruption ?? null}
+          />
+          <CohortCard label="Slow STT" cohort={analytics?.voice_impact_cohorts.slow_stt ?? null} />
+          <CohortCard label="Fast STT" cohort={analytics?.voice_impact_cohorts.fast_stt ?? null} />
+        </section>
         <section className="workspace-grid">
           <Card className="panel sessions-panel" id="sessions">
             <CardHeader className="panel-heading">
@@ -444,6 +463,31 @@ export function App() {
         </section>
       </section>
     </main>
+  );
+}
+
+function CohortCard({
+  label,
+  cohort,
+}: {
+  label: string;
+  cohort: { sample_size: number; resolution_rate: number } | null;
+}) {
+  return (
+    <Card className="cohort-card">
+      <p>{label}</p>
+      {cohort ? (
+        <>
+          <strong>{formatRate(cohort.resolution_rate)} resolved</strong>
+          <span>{cohort.sample_size} observed sessions</span>
+        </>
+      ) : (
+        <>
+          <strong>Insufficient evidence</strong>
+          <span>At least 5 observed sessions required</span>
+        </>
+      )}
+    </Card>
   );
 }
 

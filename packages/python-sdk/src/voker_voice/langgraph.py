@@ -115,10 +115,31 @@ class ObservedGraph:
         return merged
 
     def invoke(self, input: Any, config: dict[str, Any] | None = None, **kwargs: Any) -> Any:
-        return self.graph.invoke(input, config=self._config(config), **kwargs)
+        try:
+            return self.graph.invoke(input, config=self._config(config), **kwargs)
+        except BaseException as error:
+            self._record_interrupt(error)
+            raise
 
     async def ainvoke(self, input: Any, config: dict[str, Any] | None = None, **kwargs: Any) -> Any:
-        return await self.graph.ainvoke(input, config=self._config(config), **kwargs)
+        try:
+            return await self.graph.ainvoke(input, config=self._config(config), **kwargs)
+        except BaseException as error:
+            self._record_interrupt(error)
+            raise
+
+    def _record_interrupt(self, error: BaseException) -> None:
+        if "interrupt" not in type(error).__name__.lower():
+            return
+        self.session.emit(
+            "graph.interrupted",
+            status="cancelled",
+            attributes={
+                "framework": "langgraph",
+                "interrupt_type": type(error).__name__,
+                "message": str(error),
+            },
+        )
 
 
 def observe(graph: Any, session: VoiceSession) -> ObservedGraph:

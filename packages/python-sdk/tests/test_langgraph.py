@@ -38,3 +38,19 @@ def test_langgraph_callback_records_handoff_and_retry() -> None:
     assert handoff["attributes"]["from_agent"] == "router"
     assert handoff["attributes"]["to_agent"] == "specialist"
     assert any(event["event_type"] == "graph.node.retry" for event in sink.events)
+
+
+def test_observed_graph_records_an_interrupt_without_suppressing_it() -> None:
+    class GraphInterrupt(Exception):
+        pass
+
+    class InterruptedGraph:
+        def invoke(self, *_args, **_kwargs):
+            raise GraphInterrupt("needs input")
+
+    sink = MemoryEventSink()
+    with VokerVoice(event_sink=sink, enabled=True).session(agent="voice-router") as session:
+        with pytest.raises(GraphInterrupt):
+            observe_langgraph(InterruptedGraph(), session).invoke({})
+    event = next(event for event in sink.events if event["event_type"] == "graph.interrupted")
+    assert event["status"] == "cancelled"

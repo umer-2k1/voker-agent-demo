@@ -14,6 +14,28 @@ This plan turns the scope in [`voker-voice.md`](./voker-voice.md) into an execut
 - New scope must be placed in the future roadmap unless it is required to satisfy an existing MVP completion criterion.
 - Preserve the current demo until equivalent failure scenarios are available in the new development environment.
 
+## Implementation status — 2026-09-20
+
+This is a live delivery record, not a projected status report. A checked item has been
+implemented, verified locally, and committed to `main`; an unchecked item remains work.
+
+| Milestone | Status | Verified implementation |
+| --- | --- | --- |
+| 0 — Foundation | Complete | pnpm/Vite workspace, FastAPI, CI, Python package structure and checks. |
+| 1 — Schema | Complete | PostgreSQL schema, Alembic migrations, canonical JSON/Pydantic contract. |
+| 2 — Ingestion | Complete vertical slice | API-key auth, gzip batches, idempotency, out-of-order span repair, durable PostgreSQL jobs and SSE broker. |
+| 3 — Python SDK | Complete vertical slice | Fail-open queued exporter, redaction, nested spans, tools/MCP and handoffs. |
+| 4 — Trace dashboard | In progress | PostgreSQL query API and real dashboard are complete; live SSE, transcript/raw inspector, filters and pagination remain. |
+| 5 — LiveKit | In progress | Public AgentSession observer and isolated event test complete; hosted voice E2E remains. |
+| 6 — LangGraph | In progress | Public callback graph-node tracing test complete; handoff/retry/interrupt/parallel cases remain. |
+| 7 — Intelligence | In progress | Deterministic evidence-linked worker and evidence-validated OpenRouter evaluator are implemented; live semantic E2E and richer rules remain. |
+| 8 — Vapi | In progress | Payload normalizer and canonical error mapping implemented; authenticated webhook route/E2E remains. |
+| 9 — Retell | In progress | Payload normalizer and canonical error mapping implemented; authenticated webhook route/E2E remains. |
+| 10–12 | Not started | Analytics/costs, recordings, and private-beta hardening remain. |
+
+Latest verified commit checkpoints include `64c93c2` (semantic evaluator), `c5fa954`
+(finding evidence in trace API), and `ea2df73` (Vapi/Retell normalization).
+
 ## GitHub repository and commit workflow
 
 Repository: <https://github.com/umer-2k1/voker-agent-demo>

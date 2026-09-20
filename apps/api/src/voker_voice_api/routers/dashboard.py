@@ -17,6 +17,7 @@ from voker_voice_api.models import (
     Integration,
     Job,
     Project,
+    Recording,
     Span,
     Turn,
     UsageRecord,
@@ -264,6 +265,9 @@ def get_session_trace(
         .where(AnalysisRun.session_id == session.id)
         .order_by(AnalysisRun.created_at.desc(), AnalysisRun.id.desc())
     ).all()
+    recordings = db.scalars(
+        select(Recording).where(Recording.session_id == session.id).order_by(Recording.created_at)
+    ).all()
     turns = db.scalars(
         select(Turn).where(Turn.session_id == session.id).order_by(Turn.sequence, Turn.id)
     ).all()
@@ -369,6 +373,18 @@ def get_session_trace(
             }
             for run in analysis_runs
         ],
+        "recordings": [
+            {
+                "id": str(recording.id),
+                "source": recording.source,
+                "external_id": recording.external_id,
+                "duration_ms": recording.duration_ms,
+                "media_type": recording.media_type,
+                "status": recording.status,
+                "expires_at": timestamp(recording.expires_at),
+            }
+            for recording in recordings
+        ],
     }
 
 
@@ -390,3 +406,44 @@ def request_reanalysis(
         db.add(Job(project_id=project.id, type=job_type, payload={"session_id": str(session.id)}))
     db.commit()
     return {"status": "queued"}
+
+
+@router.post("/projects/{project_slug}/sessions/{session_id}/recordings", status_code=201)
+def attach_recording_metadata(
+    project_slug: str,
+    session_id: str,
+    payload: dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Attach optional external/private recording metadata without copying audio."""
+
+    project = project_for_slug(db, project_slug)
+    session = db.scalar(
+        select(VoiceSession).where(
+            VoiceSession.project_id == project.id, VoiceSession.id == session_id
+        )
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    source = payload.get("source")
+    if not isinstance(source, str) or not source:
+        raise HTTPException(status_code=422, detail="recording source is required")
+    duration_ms = payload.get("duration_ms")
+    if duration_ms is not None and (not isinstance(duration_ms, int) or duration_ms < 0):
+        raise HTTPException(status_code=422, detail="duration_ms must be a non-negative integer")
+    external_id = payload.get("external_id")
+    asset_reference = payload.get("asset_reference")
+    media_type = payload.get("media_type")
+    recording_status = payload.get("status")
+    recording = Recording(
+        session_id=session.id,
+        source=source,
+        external_id=external_id if isinstance(external_id, str) else None,
+        asset_reference=asset_reference if isinstance(asset_reference, str) else None,
+        duration_ms=duration_ms,
+        media_type=media_type if isinstance(media_type, str) else None,
+        status=recording_status if isinstance(recording_status, str) else "available",
+    )
+    db.add(recording)
+    db.commit()
+    return {"id": str(recording.id), "status": recording.status}

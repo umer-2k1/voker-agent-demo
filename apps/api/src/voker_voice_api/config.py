@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     ingest_max_body_bytes: int = 2_000_000
     ingest_max_events: int = 500
+    openrouter_api_key: str | None = None
+    openrouter_model: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ROOT / ".env",

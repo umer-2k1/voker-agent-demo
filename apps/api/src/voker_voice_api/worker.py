@@ -7,6 +7,7 @@ from voker_voice_api.analysis import run_deterministic_analysis
 from voker_voice_api.database import SessionLocal
 from voker_voice_api.jobs import claim_jobs, complete_job, fail_job, release_expired_leases
 from voker_voice_api.models import Job
+from voker_voice_api.semantic import evaluate_session
 
 
 def worker_id() -> str:
@@ -21,6 +22,14 @@ def process_job(db: Session, job: Job) -> None:
         import uuid
 
         run_deterministic_analysis(db, session_id=uuid.UUID(session_value))
+        return
+    if job.type == "run_semantic_analysis":
+        session_value = job.payload.get("session_id")
+        if not isinstance(session_value, str):
+            raise ValueError("run_semantic_analysis job requires session_id")
+        import uuid
+
+        evaluate_session(db, session_id=uuid.UUID(session_value))
         return
     raise ValueError(f"Unsupported job type: {job.type}")
 

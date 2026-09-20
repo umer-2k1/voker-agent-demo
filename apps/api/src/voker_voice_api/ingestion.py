@@ -277,6 +277,13 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
                 payload={"session_id": str(session.id)},
             )
         )
+        db.add(
+            Job(
+                project_id=context.project_id,
+                type="run_semantic_analysis",
+                payload={"session_id": str(session.id)},
+            )
+        )
     return "accepted"
 
 

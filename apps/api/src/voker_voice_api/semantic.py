@@ -74,7 +74,11 @@ def evaluate_session(db: Session, *, session_id: uuid.UUID) -> int:
                 {
                     "role": "system",
                     "content": (
-                        "Return exactly one valid JSON object with outcome, summary, findings. "
+                        "Return exactly one valid JSON object with this schema: "
+                        '{"outcome":"success|failed|escalated|abandoned|uncertain",'
+                        '"summary":"string","findings":[{"statement":"string",'
+                        '"severity":"low|medium|high","confidence":0.0,'
+                        '"evidence_event_ids":["event-id"]}]}. '
                         "Every finding must cite only supplied event IDs. Do not claim causation."
                     ),
                 },

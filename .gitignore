@@ -5,3 +5,12 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 /Notes.md
+node_modules/
+dist/
+coverage/
+.coverage
+.mypy_cache/
+.ruff_cache/
+.venv/
+.env.local
+*.egg-info/

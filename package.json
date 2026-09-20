@@ -1,0 +1,12 @@
+{
+  "name": "voker-voice-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.5.0",
+  "scripts": {
+    "dev:web": "pnpm --filter @voker-voice/web dev",
+    "build:web": "pnpm --filter @voker-voice/web build",
+    "test:web": "pnpm --filter @voker-voice/web test",
+    "lint:web": "pnpm --filter @voker-voice/web lint",
+    "format:check:web": "pnpm --filter @voker-voice/web format:check"
+  }
+}

@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: voker_voice
+      POSTGRES_USER: voker
+      POSTGRES_PASSWORD: voker_dev
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voker -d voker_voice"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - voker_voice_postgres:/var/lib/postgresql/data
+
+volumes:
+  voker_voice_postgres:

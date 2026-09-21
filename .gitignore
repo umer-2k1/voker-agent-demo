@@ -15,3 +15,4 @@ coverage/
 .venv/
 .env.local
 *.egg-info/
+artifacts/dashboard-snapshots/

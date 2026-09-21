@@ -13,6 +13,16 @@ def test_health() -> None:
     assert response.json()["status"] == "ok"
 
 
+def test_dashboard_origins_allow_session_credentials() -> None:
+    response = TestClient(app).get(
+        "/health",
+        headers={"Origin": "http://127.0.0.1:5173"},
+    )
+
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+    assert response.headers["access-control-allow-credentials"] == "true"
+
+
 def test_readiness_reports_durable_queue_backlog() -> None:
     db = MagicMock()
     db.scalar.return_value = 3

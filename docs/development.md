@@ -66,3 +66,16 @@ pnpm build:web
 ```
 
 Live integration tests read credentials from the ignored root `.env`. They must skip with an explicit reason when the relevant provider configuration is absent.
+
+## Dashboard snapshots
+
+With the API and Vite dashboard running locally, capture the current visual
+states with:
+
+```bash
+node scripts/capture-dashboard-snapshots.mjs
+```
+
+Images are written to the ignored `artifacts/dashboard-snapshots/` folder. The
+script captures the login page and the protected-route sign-in states; it does
+not bypass Google OAuth to fabricate authenticated evidence.

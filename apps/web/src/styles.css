@@ -209,37 +209,207 @@ h2 {
   padding: 48px 32px;
 }
 .login-page {
-  align-items: center;
-  background: #eaf5f3;
-  display: flex;
-  justify-content: center;
+  background: #f8fafc;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(430px, 0.9fr);
   min-height: 100vh;
-  padding: 24px;
+}
+.login-story {
+  background: #004d43;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  overflow: hidden;
+  padding: 40px clamp(32px, 7vw, 112px);
+  position: relative;
+}
+.login-brand,
+.login-card-brand {
+  align-items: center;
+  display: flex;
+  font-size: 20px;
+  font-weight: 800;
+  gap: 10px;
+  letter-spacing: -0.04em;
+  position: relative;
+  z-index: 1;
+}
+.login-story-copy {
+  margin: auto 0 36px;
+  max-width: 620px;
+  position: relative;
+  z-index: 1;
+}
+.login-story-copy .eyebrow {
+  color: #9ecbc3;
+}
+.login-story h1 {
+  color: white;
+  font-size: clamp(42px, 5vw, 68px);
+  margin: 14px 0 20px;
+  max-width: 650px;
+}
+.login-story-copy > p:not(.eyebrow) {
+  color: #c8dfdb;
+  font-size: 17px;
+  line-height: 1.65;
+  max-width: 560px;
+}
+.login-benefits {
+  display: grid;
+  gap: 13px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+  z-index: 1;
+}
+.login-benefits li {
+  align-items: center;
+  color: #dcefeb;
+  display: flex;
+  font-size: 14px;
+  gap: 10px;
+}
+.login-benefits i {
+  align-items: center;
+  background: #176258;
+  border-radius: 50%;
+  color: #bdeee5;
+  display: inline-flex;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  height: 21px;
+  justify-content: center;
+  width: 21px;
+}
+.login-glow {
+  background: #20a28b;
+  border-radius: 50%;
+  filter: blur(2px);
+  opacity: 0.14;
+  position: absolute;
+}
+.login-glow-one {
+  height: 430px;
+  right: -150px;
+  top: 13%;
+  width: 430px;
+}
+.login-glow-two {
+  background: #b5eee4;
+  bottom: -170px;
+  height: 360px;
+  left: -170px;
+  width: 360px;
+}
+.login-panel {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 40px;
 }
 .login-card {
   background: white;
-  border: 1px solid #ddeaed;
-  border-radius: 14px;
-  box-shadow: var(--shadow-card);
-  max-width: 430px;
-  padding: 36px;
+  border: 1px solid #e0e9e7;
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgb(15 38 34 / 10%);
+  max-width: 450px;
+  padding: 40px;
+  width: 100%;
 }
-.login-card h1 {
-  font-size: 30px;
+.login-card-brand {
+  color: #004d43;
+  font-size: 16px;
+  margin-bottom: 54px;
 }
-.login-card p:not(.eyebrow) {
-  color: #64748b;
-  line-height: 1.5;
+.login-card .eyebrow {
+  color: #267469;
+}
+.login-card h2 {
+  color: #173c36;
+  font-size: 34px;
+  letter-spacing: -0.045em;
+  margin: 10px 0;
+}
+.login-copy {
+  color: #607a76;
+  line-height: 1.6;
+  margin-bottom: 27px;
 }
 .google-login {
-  background: #004d43;
-  border-radius: 8px;
-  color: white;
-  display: inline-block;
-  font-weight: 700;
-  margin-top: 16px;
-  padding: 11px 14px;
+  align-items: center;
+  background: #fff;
+  border: 1px solid #c9ded9;
+  border-radius: 9px;
+  color: #173c36;
+  display: flex;
+  font-weight: 750;
+  gap: 12px;
+  justify-content: center;
+  padding: 13px 16px;
   text-decoration: none;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    transform 0.15s;
+  width: 100%;
+}
+.google-login:hover {
+  background: #f0f8f6;
+  border-color: #76a99f;
+  transform: translateY(-1px);
+}
+.login-help {
+  color: #829a95;
+  font-size: 11px;
+  line-height: 1.55;
+  margin: 22px 0 0;
+  text-align: center;
+}
+.login-footer {
+  color: #91a8a3;
+  font-size: 11px;
+  margin: 22px 0 0;
+  text-align: center;
+}
+@media (max-width: 800px) {
+  .login-page {
+    display: block;
+  }
+  .login-story {
+    min-height: auto;
+    padding: 28px 26px 36px;
+  }
+  .login-story-copy {
+    margin: 55px 0 28px;
+  }
+  .login-story h1 {
+    font-size: 38px;
+  }
+  .login-benefits {
+    display: none;
+  }
+  .login-glow-one {
+    height: 230px;
+    right: -100px;
+    top: 15%;
+    width: 230px;
+  }
+  .login-panel {
+    min-height: auto;
+    padding: 24px;
+  }
+  .login-card {
+    margin-top: -16px;
+    padding: 30px 25px;
+  }
+  .login-card-brand {
+    margin-bottom: 38px;
+  }
 }
 .settings-copy {
   color: #64748b;

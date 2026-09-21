@@ -1,14 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { App } from "./App";
 
-test("renders the Voker Voice foundation", () => {
+test("redirects an unsigned visitor to the polished sign-in page", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
   render(<QueryClientProvider client={new QueryClient()}><App /></QueryClientProvider>);
 
-  expect(
-    screen.getByRole("heading", { name: /voice-agent intelligence/i }),
-  ).toBeVisible();
+  expect(await screen.findByRole("heading", { name: /welcome back/i })).toBeVisible();
+  expect(screen.getByRole("link", { name: /continue with google/i })).toBeVisible();
 });

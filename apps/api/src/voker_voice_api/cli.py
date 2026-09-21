@@ -1,6 +1,6 @@
 import argparse
 
-from voker_voice_api.bootstrap import create_ingest_key, ensure_development_seed
+from voker_voice_api.bootstrap import create_ingest_key, ensure_development_seed, seed_demo_sessions
 from voker_voice_api.database import SessionLocal
 from voker_voice_api.worker import expire_recordings, run_once
 
@@ -9,6 +9,12 @@ def seed() -> None:
     with SessionLocal.begin() as db:
         ensure_development_seed(db)
     print("Development seed is ready")
+
+
+def seed_demo(count: int) -> None:
+    with SessionLocal.begin() as db:
+        created = seed_demo_sessions(db, count=count)
+    print(f"Demo sessions ready: {created} created (existing sessions were preserved)")
 
 
 def create_key(label: str) -> None:
@@ -23,6 +29,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Voker Voice API maintenance commands")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("seed", help="Create the idempotent development seed")
+    demo_parser = subparsers.add_parser(
+        "seed-demo", help="Create realistic dashboard demo sessions"
+    )
+    demo_parser.add_argument("--count", type=int, default=20, choices=range(1, 101))
     create_key_parser = subparsers.add_parser(
         "create-ingest-key", help="Create a development ingest key"
     )
@@ -34,6 +44,8 @@ def main() -> None:
 
     if args.command == "seed":
         seed()
+    if args.command == "seed-demo":
+        seed_demo(args.count)
     if args.command == "create-ingest-key":
         create_key(args.label)
     if args.command == "worker-once":

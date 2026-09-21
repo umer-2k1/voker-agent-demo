@@ -41,6 +41,7 @@ export type VoiceSession = {
   started_at: string;
   error_count: number;
   event_count: number;
+  outcome?: string | null;
 };
 
 export type SessionPage = { offset: number; limit: number; total: number };
@@ -69,6 +70,12 @@ export type Trace = {
     certainty: string;
     severity: string | null;
     statement: string;
+    evidence: Array<{
+      entity_type: string;
+      entity_id: string;
+      event_id: string | null;
+      turn_id: string | null;
+    }>;
   }>;
   analysis_runs: Array<{
     id: string;

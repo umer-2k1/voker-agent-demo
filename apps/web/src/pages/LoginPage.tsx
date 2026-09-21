@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 
+import { Button } from "@/components/ui/button";
+
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 
 function GoogleMark() {
@@ -82,7 +84,7 @@ export function LoginPage() {
             intelligence workspace.
           </p>
           <form action={googleLoginUrl} method="get" onSubmit={beginGoogleSignIn}>
-            <button
+            <Button
               aria-busy={isRedirecting}
               className="google-login"
               disabled={isRedirecting}
@@ -90,7 +92,7 @@ export function LoginPage() {
             >
               <GoogleMark />
               {isRedirecting ? "Opening Google…" : "Continue with Google"}
-            </button>
+            </Button>
           </form>
           <p aria-live="polite" className="login-status" role="status">
             {isRedirecting ? "Redirecting to Google sign-in" : null}

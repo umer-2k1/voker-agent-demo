@@ -10,12 +10,6 @@ function formatLatency(value: number | null) {
       : `${Math.round(value)} ms`;
 }
 
-function formatCost(value: number | null, currency: string | null) {
-  return value === null
-    ? "Unknown"
-    : `${currency ?? "USD"} ${(value / 1_000_000).toFixed(4)}`;
-}
-
 function formatRate(value: number) {
   return `${Math.round(value * 100)}%`;
 }
@@ -44,37 +38,23 @@ export function OverviewPanel({
     );
   return (
     <>
-      <section className="metric-grid" aria-label="Project metrics">
-        <Metric
-          label="Sessions captured"
-          value={overview?.metrics.total_sessions ?? "—"}
-        />
-        <Metric
-          label="Live sessions"
-          value={overview?.metrics.active_sessions ?? "—"}
-        />
-        <Metric
-          label="Errors observed"
-          value={overview?.metrics.error_count ?? "—"}
-          danger={(overview?.metrics.error_count ?? 0) > 0}
-        />
-        <Metric
-          label="Average span latency"
-          value={formatLatency(
-            overview?.metrics.average_span_duration_ms ?? null,
-          )}
-        />
-        <Metric
-          label="Tracked cost"
-          value={formatCost(
-            analytics?.cost.amount_micros ?? null,
-            analytics?.cost.currency ?? null,
-          )}
-        />
+      <section className="operations-brief" aria-label="Operational summary">
+        <div className="operations-signal">
+          <span className={(overview?.metrics.error_count ?? 0) > 0 ? "signal-status urgent" : "signal-status"}>
+            <i /> {(overview?.metrics.error_count ?? 0) > 0 ? "Attention needed" : "System steady"}
+          </span>
+          <h2>{(overview?.metrics.error_count ?? 0) > 0 ? "Errors need investigation before the next release." : "No failing traces need immediate action."}</h2>
+          <p>Review the sessions queue to move from an observed signal to the exact turn and trace event behind it.</p>
+        </div>
+        <dl className="operations-readout">
+          <div><dt>Open errors</dt><dd>{overview?.metrics.error_count ?? "—"}</dd></div>
+          <div><dt>Active now</dt><dd>{overview?.metrics.active_sessions ?? "—"}</dd></div>
+          <div><dt>Observed sessions</dt><dd>{overview?.metrics.total_sessions ?? "—"}</dd></div>
+          <div><dt>Mean span</dt><dd>{formatLatency(overview?.metrics.average_span_duration_ms ?? null)}</dd></div>
+        </dl>
       </section>
       <section className="insight-banner" id="insights">
         <div>
-          <p className="eyebrow">Intelligence layer</p>
           <h2>Ask why a conversation failed—with evidence.</h2>
           <p>
             Deterministic signals are recorded immediately. After a session
@@ -82,7 +62,7 @@ export function OverviewPanel({
             support them.
           </p>
         </div>
-        <span>{findingsCount} evidence-backed findings</span>
+        <span>{findingsCount} linked findings in the selected trace</span>
       </section>
       <section className="analytics-grid" aria-label="Voice impact analytics">
         <ImpactChart latency={analytics?.latency ?? null} />
@@ -191,23 +171,6 @@ function OutcomeChart({
           Outcome mix appears after completed sessions are captured.
         </p>
       )}
-    </Card>
-  );
-}
-function Metric({
-  label,
-  value,
-  danger = false,
-}: {
-  label: string;
-  value: string | number;
-  danger?: boolean;
-}) {
-  return (
-    <Card className={`metric-card ${danger ? "danger" : ""}`}>
-      <p>{label}</p>
-      <strong>{value}</strong>
-      <span>From captured traces</span>
     </Card>
   );
 }

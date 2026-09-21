@@ -3,13 +3,13 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from voker_voice_api.analytics import CohortValue, latency_distribution, voice_impact_cohorts
 from voker_voice_api.bootstrap import create_ingest_key
-from voker_voice_api.config import get_settings
+from voker_voice_api.config import REPOSITORY_ROOT, get_settings
 from voker_voice_api.database import get_db
 from voker_voice_api.models import (
     AnalysisRun,
@@ -292,6 +292,10 @@ def list_sessions(
     status: str | None = None,
     source: str | None = None,
     search: str | None = Query(default=None, max_length=255),
+    sort: str = Query(
+        default="started_at_desc",
+        pattern="^(started_at_desc|started_at_asc|errors_desc|events_desc)$",
+    ),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     project = project_for_slug(db, project_slug)
@@ -303,12 +307,34 @@ def list_sessions(
     if search:
         conditions.append(VoiceSession.external_session_id.ilike(f"%{search}%"))
     total = db.scalar(select(func.count()).select_from(VoiceSession).where(*conditions)) or 0
+    ordering = {
+        "started_at_desc": (VoiceSession.started_at.desc(), VoiceSession.id.desc()),
+        "started_at_asc": (VoiceSession.started_at.asc(), VoiceSession.id.asc()),
+    }
+    # Error/event ordering uses correlated counts so sorting remains server-side
+    # and therefore stable across pagination.
+    if sort == "errors_desc":
+        error_total = (
+            select(func.count())
+            .select_from(Error)
+            .where(Error.session_id == VoiceSession.id)
+            .correlate(VoiceSession)
+            .scalar_subquery()
+        )
+        order_by = (error_total.desc(), VoiceSession.started_at.desc(), VoiceSession.id.desc())
+    elif sort == "events_desc":
+        event_total = (
+            select(func.count())
+            .select_from(Event)
+            .where(Event.session_id == VoiceSession.id)
+            .correlate(VoiceSession)
+            .scalar_subquery()
+        )
+        order_by = (event_total.desc(), VoiceSession.started_at.desc(), VoiceSession.id.desc())
+    else:
+        order_by = ordering[sort]
     sessions = db.scalars(
-        select(VoiceSession)
-        .where(*conditions)
-        .order_by(VoiceSession.started_at.desc(), VoiceSession.id.desc())
-        .offset(offset)
-        .limit(limit)
+        select(VoiceSession).where(*conditions).order_by(*order_by).offset(offset).limit(limit)
     ).all()
     items = []
     for session in sessions:
@@ -362,6 +388,33 @@ def get_session_trace(
     turns = db.scalars(
         select(Turn).where(Turn.session_id == session.id).order_by(Turn.sequence, Turn.id)
     ).all()
+    event_by_id = {event.id: event for event in events}
+    span_by_id = {span.id: span for span in spans}
+    turn_ids = {turn.id for turn in turns}
+
+    def evidence_target(evidence: FindingEvidence) -> dict[str, str | None]:
+        """Resolve opaque evidence rows to directly addressable trace targets."""
+        event_id = None
+        turn_id = None
+        if evidence.entity_type == "event":
+            event = event_by_id.get(evidence.entity_id)
+            event_id = str(event.id) if event else None
+            turn_id = str(event.turn_id) if event and event.turn_id else None
+        elif evidence.entity_type == "span":
+            span = span_by_id.get(evidence.entity_id)
+            turn_id = str(span.turn_id) if span and span.turn_id else None
+            related_event = next(
+                (event for event in events if event.span_id == evidence.entity_id), None
+            )
+            event_id = str(related_event.id) if related_event else None
+        elif evidence.entity_type == "turn" and evidence.entity_id in turn_ids:
+            turn_id = str(evidence.entity_id)
+        return {
+            "entity_type": evidence.entity_type,
+            "entity_id": str(evidence.entity_id),
+            "event_id": event_id,
+            "turn_id": turn_id,
+        }
     return {
         "session": session_summary(session, len(errors), len(events)),
         "events": [
@@ -443,7 +496,7 @@ def get_session_trace(
                     "created_at": timestamp(finding.created_at),
                 },
                 "evidence": [
-                    {"entity_type": evidence.entity_type, "entity_id": str(evidence.entity_id)}
+                    evidence_target(evidence)
                     for evidence in db.scalars(
                         select(FindingEvidence).where(FindingEvidence.finding_id == finding.id)
                     )
@@ -567,13 +620,16 @@ def delete_recording_metadata(
     return {"id": str(recording.id), "status": recording.status}
 
 
-@router.get("/projects/{project_slug}/sessions/{session_id}/recordings/{recording_id}/playback")
+@router.get(
+    "/projects/{project_slug}/sessions/{session_id}/recordings/{recording_id}/playback",
+    response_model=None,
+)
 def redirect_to_recording_playback(
     project_slug: str,
     session_id: str,
     recording_id: str,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> RedirectResponse | FileResponse:
     """Issue playback through a short-lived signed URL; audio never transits this API."""
 
     project = project_for_slug(db, project_slug)
@@ -590,6 +646,15 @@ def redirect_to_recording_playback(
         raise HTTPException(status_code=404, detail="Recording not found")
     if recording.status != "available":
         raise HTTPException(status_code=410, detail="Recording is no longer available")
+    # Development seed recordings intentionally use a repository fixture. This
+    # path is unavailable outside development and is constrained to the repo.
+    if recording.source == "local":
+        if get_settings().app_env != "development" or not recording.asset_reference:
+            raise HTTPException(status_code=404, detail="Local demo recording is unavailable")
+        path = (REPOSITORY_ROOT / recording.asset_reference).resolve()
+        if REPOSITORY_ROOT not in path.parents or not path.is_file():
+            raise HTTPException(status_code=404, detail="Local demo recording was not found")
+        return FileResponse(path, media_type=recording.media_type or "audio/mpeg")
     try:
         url = cloudinary_playback_url(recording, get_settings())
     except ValueError as error:

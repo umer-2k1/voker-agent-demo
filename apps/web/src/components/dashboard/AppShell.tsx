@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { BarChart3, Bot, ClipboardCheck, Headphones, LayoutDashboard, Settings, Users } from "lucide-react";
 
 import type { Account } from "@/pages/AccountPage";
+import { Button } from "@/components/ui/button";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 
@@ -39,34 +41,35 @@ export function AppShell({ account }: { account: Account }) {
           <span className="brand-mark">V</span>
           <span>Voker</span>
         </div>
-        <p className="workspace">VOICE INTELLIGENCE</p>
+        <p className="workspace">VOICE OPERATIONS</p>
         <nav aria-label="Primary navigation">
           <NavLink
             end
             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
             to="/"
           >
+            <LayoutDashboard aria-hidden="true" size={16} />
             Overview
           </NavLink>
           <NavLink
             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
             to="/sessions"
           >
+            <Headphones aria-hidden="true" size={16} />
             Sessions
           </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/sessions#trace"
-          >
-            Trace explorer
-          </NavLink>
-          <a className="nav-item" href="/#insights">
+          <NavLink className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} to="/#insights">
+            <BarChart3 aria-hidden="true" size={16} />
             Intelligence
-          </a>
+          </NavLink>
+          <span className="nav-item nav-item-muted"><Bot aria-hidden="true" size={16} /> Agents</span>
+          <span className="nav-item nav-item-muted"><ClipboardCheck aria-hidden="true" size={16} /> Evaluations</span>
+          <span className="nav-item nav-item-muted"><Users aria-hidden="true" size={16} /> Team</span>
           <NavLink
             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
             to="/settings"
           >
+            <Settings aria-hidden="true" size={16} />
             Workspace settings
           </NavLink>
         </nav>
@@ -78,13 +81,15 @@ export function AppShell({ account }: { account: Account }) {
             <b>{account.display_name ?? "Google account"}</b>
             <span>{account.email}</span>
           </div>
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             className="signout-button"
             disabled={logout.isPending}
             onClick={() => logout.mutate()}
           >
             {logout.isPending ? "Signing out…" : "Sign out"}
-          </button>
+          </Button>
           {logout.isError ? (
             <small>Could not sign out. Try again.</small>
           ) : null}
@@ -100,7 +105,6 @@ export function AppShell({ account }: { account: Account }) {
             Overview
           </NavLink>
           <NavLink to="/sessions">Sessions</NavLink>
-          <NavLink to="/sessions#trace">Trace</NavLink>
           <NavLink to="/settings">Settings</NavLink>
           <NavLink
             className="mobile-avatar"
@@ -109,9 +113,9 @@ export function AppShell({ account }: { account: Account }) {
           >
             {initials(account)}
           </NavLink>
-          <button disabled={logout.isPending} onClick={() => logout.mutate()}>
+          <Button variant="ghost" size="sm" disabled={logout.isPending} onClick={() => logout.mutate()}>
             {logout.isPending ? "…" : "Sign out"}
-          </button>
+          </Button>
         </nav>
       </header>
       <Outlet />

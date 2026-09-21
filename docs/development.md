@@ -35,6 +35,18 @@ alembic -c apps/api/alembic.ini upgrade head
 voker-voice-api seed
 ```
 
+To populate the dashboard with realistic local-only data for UI review, run the
+demo seed explicitly after migrations. It preserves real sessions and is
+idempotent: re-running it only fills missing `demo-call-*` sessions.
+
+```bash
+voker-voice-api seed-demo --count 20
+```
+
+The demo records use the repository's bundled MP3 through a development-only
+playback path. Production recordings continue to use their configured provider
+and are never served from the local filesystem.
+
 Create a local ingest key when testing the API manually. The command prints the raw key once; save it only in the ignored `.env` or your local shell session, never in source or logs:
 
 ```bash

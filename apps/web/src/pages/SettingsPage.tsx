@@ -1,8 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 import type { Account } from "@/pages/AccountPage";
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -13,6 +19,7 @@ type ApiKey = {
   environment: string;
   revoked_at: string | null;
 };
+const createKeySchema = z.object({ label: z.string().trim().min(2, "Use at least 2 characters for the key label.") });
 
 function initials(account: Account) {
   return (account.display_name?.trim() || account.email)
@@ -37,16 +44,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function SettingsPage({ account }: { account: Account }) {
   const queryClient = useQueryClient();
-  const [label, setLabel] = useState("");
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [revokeCandidate, setRevokeCandidate] = useState<ApiKey | null>(null);
+  const form = useForm<z.infer<typeof createKeySchema>>({
+    resolver: zodResolver(createKeySchema),
+    defaultValues: { label: "" },
+  });
   const keys = useQuery({
     queryKey: ["api-keys", projectSlug],
     queryFn: () =>
       request<{ items: ApiKey[] }>(`/api/projects/${projectSlug}/api-keys`),
   });
   const createKey = useMutation({
-    mutationFn: () =>
+    mutationFn: (label: string) =>
       request<{ api_key: string }>(`/api/projects/${projectSlug}/api-keys`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -54,7 +64,7 @@ export function SettingsPage({ account }: { account: Account }) {
       }),
     onSuccess: (result) => {
       setRevealedKey(result.api_key);
-      setLabel("");
+      form.reset();
       void queryClient.invalidateQueries({
         queryKey: ["api-keys", projectSlug],
       });
@@ -178,33 +188,26 @@ export function SettingsPage({ account }: { account: Account }) {
               <code className="break-all text-[#5e491f]">{revealedKey}</code>
             </div>
           ) : null}
+          <Form {...form}>
           <form
             className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-end"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (label.trim()) createKey.mutate();
-            }}
+            onSubmit={form.handleSubmit((values) => createKey.mutate(values.label))}
           >
-            <label className="grid flex-1 gap-2">
-              <span className="text-xs font-bold text-[#607a76]">
-                Key label
-              </span>
-              <input
-                className="w-full rounded-lg border border-[#cfe0dc] px-3 py-3 text-sm text-[#173c36] outline-none placeholder:text-[#9aa9a6] focus:border-[#20a28b] focus:ring-2 focus:ring-[#ddeaed]"
-                value={label}
-                onChange={(event) => setLabel(event.target.value)}
-                placeholder="e.g. Production voice agent"
-                aria-label="Key label"
-              />
-            </label>
-            <button
-              className="min-h-11 rounded-lg bg-[#004d43] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#063f38] disabled:cursor-not-allowed disabled:opacity-50"
+            <FormField control={form.control} name="label" render={({ field }) => (
+              <FormItem className="flex-1">
+                <FormLabel>Key label</FormLabel>
+                <FormControl><Input placeholder="e.g. Production voice agent" {...field} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <Button
               type="submit"
-              disabled={!label.trim() || createKey.isPending}
+              disabled={createKey.isPending}
             >
               {createKey.isPending ? "Creating…" : "Create key"}
-            </button>
+            </Button>
           </form>
+          </Form>
           {keys.isPending ? (
             <div className="mt-5 space-y-2">
               <div className="h-15 animate-pulse rounded-lg bg-[#eaf5f3]" />
@@ -234,22 +237,22 @@ export function SettingsPage({ account }: { account: Account }) {
                 </p>
               ) : null}
               <div className="mt-4 flex flex-wrap gap-3">
-                <button
-                  className="rounded-md border border-[#c9ded9] bg-white px-3 py-2 font-semibold text-[#254841]"
+                <Button
+                  variant="outline"
                   disabled={revokeKey.isPending}
                   onClick={() => setRevokeCandidate(null)}
                   type="button"
                 >
                   Keep key
-                </button>
-                <button
-                  className="rounded-md bg-[#9e3325] px-3 py-2 font-semibold text-white disabled:opacity-50"
+                </Button>
+                <Button
+                  variant="destructive"
                   disabled={revokeKey.isPending}
                   onClick={() => revokeKey.mutate(revokeCandidate.id)}
                   type="button"
                 >
                   {revokeKey.isPending ? "Revoking…" : "Revoke key"}
-                </button>
+                </Button>
               </div>
             </section>
           ) : null}
@@ -279,13 +282,15 @@ export function SettingsPage({ account }: { account: Account }) {
                       Revoked
                     </em>
                   ) : (
-                    <button
-                      className="rounded-md border border-[#e2b5ad] px-2.5 py-1.5 text-xs font-semibold text-[#a73d30] hover:bg-[#fff4f2]"
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-destructive/30 text-destructive hover:bg-destructive/10"
                       type="button"
                       onClick={() => setRevokeCandidate(key)}
                     >
                       Revoke
-                    </button>
+                    </Button>
                   )}
                 </div>
               ))

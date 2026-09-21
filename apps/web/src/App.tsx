@@ -8,7 +8,9 @@ import {
   Route,
   Routes,
   useLocation,
+  useNavigate,
   useSearchParams,
+  useParams,
 } from "react-router-dom";
 
 import { AppShell } from "@/components/dashboard/AppShell";
@@ -23,6 +25,7 @@ import type {
   VoiceSession,
 } from "@/components/dashboard/types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { Account } from "@/pages/AccountPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { SettingsPage } from "@/pages/SettingsPage";
@@ -51,14 +54,15 @@ async function dashboardRequest<T>(
 
 function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { sessionId: routeSessionId } = useParams();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("");
-  const [search, setSearch] = useState("");
-  const [offset, setOffset] = useState(0);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
-    () => searchParams.get("session"),
-  );
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
+  const [sourceFilter, setSourceFilter] = useState(() => searchParams.get("source") ?? "");
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
+  const [sort, setSort] = useState(() => searchParams.get("sort") ?? "started_at_desc");
+  const [offset, setOffset] = useState(() => Number(searchParams.get("offset") ?? 0));
+  const selectedSessionId = routeSessionId;
   const overviewQuery = useQuery({
     queryKey: ["overview", projectSlug],
     queryFn: () =>
@@ -78,6 +82,7 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
       statusFilter,
       sourceFilter,
       search,
+      sort,
       offset,
     ],
     queryFn: () => {
@@ -88,6 +93,7 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
       if (statusFilter) query.set("status", statusFilter);
       if (sourceFilter) query.set("source", sourceFilter);
       if (search.trim()) query.set("search", search.trim());
+      if (sort !== "started_at_desc") query.set("sort", sort);
       return dashboardRequest<{ items: VoiceSession[]; page: SessionPage }>(
         `/api/projects/${projectSlug}/sessions?${query}`,
       );
@@ -124,7 +130,7 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
   const analytics = analyticsQuery.data ?? null;
   const sessions = sessionsQuery.data?.items ?? [];
   const page = sessionsQuery.data?.page ?? emptyPage;
-  const activeSessionId = selectedSessionId ?? sessions[0]?.id ?? null;
+  const activeSessionId = selectedSessionId;
   const trace = traceQuery.data ?? null;
   const { refetch: refetchTrace } = traceQuery;
   const liveSessionExternalId = trace?.session.external_session_id;
@@ -135,6 +141,21 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
     sessionsQuery.error ??
     traceQuery.error ??
     reanalysisMutation.error;
+
+  function syncFilterUrl(next: {
+    status?: string;
+    source?: string;
+    search?: string;
+    sort?: string;
+    offset?: number;
+  }) {
+    const params = new URLSearchParams(searchParams);
+    Object.entries(next).forEach(([key, value]) => {
+      if (value === undefined || value === "" || value === 0 || (key === "sort" && value === "started_at_desc")) params.delete(key);
+      else params.set(key, String(value));
+    });
+    setSearchParams(params, { replace: true });
+  }
 
   useEffect(() => {
     if (
@@ -212,50 +233,71 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
           />
         ) : null}
         {sessionsOnly ? (
-          <section className="workspace-grid">
-            <SessionsPanel
-              sessions={sessions}
-              page={page}
-              loading={sessionsQuery.isPending}
-              selectedId={activeSessionId ?? undefined}
-              search={search}
-              status={statusFilter}
-              source={sourceFilter}
-              onSearch={(value) => {
-                setSearch(value);
-                setOffset(0);
-              }}
-              onStatus={(value) => {
-                setStatusFilter(value);
-                setOffset(0);
-              }}
-              onSource={(value) => {
-                setSourceFilter(value);
-                setOffset(0);
-              }}
-              onSelect={(id) => {
-                setSelectedSessionId(id);
-                setSearchParams((current) => {
-                  current.set("session", id);
-                  return current;
-                });
-              }}
-              onPage={setOffset}
-            />
-            <TracePanel
-              trace={trace}
-              apiBaseUrl={apiBaseUrl}
-              projectSlug={projectSlug}
-              reanalyzing={reanalysisMutation.isPending}
-              reanalysisError={
-                reanalysisMutation.error instanceof Error
-                  ? reanalysisMutation.error.message
-                  : null
-              }
-              onReanalyze={() =>
-                trace && reanalysisMutation.mutate(trace.session.id)
-              }
-            />
+          <section className="sessions-workspace">
+            {activeSessionId ? (
+              <>
+                <Button
+                  className="back-to-sessions"
+                  onClick={() => {
+                    navigate(`/sessions${searchParams.toString() ? `?${searchParams}` : ""}`);
+                  }}
+                  type="button"
+                >
+                  Back to sessions
+                </Button>
+                <TracePanel
+                  trace={trace}
+                  apiBaseUrl={apiBaseUrl}
+                  projectSlug={projectSlug}
+                  reanalyzing={reanalysisMutation.isPending}
+                  reanalysisError={
+                    reanalysisMutation.error instanceof Error
+                      ? reanalysisMutation.error.message
+                      : null
+                  }
+                  onReanalyze={() =>
+                    trace && reanalysisMutation.mutate(trace.session.id)
+                  }
+                />
+              </>
+            ) : (
+              <SessionsPanel
+                sessions={sessions}
+                page={page}
+                loading={sessionsQuery.isPending}
+                search={search}
+                status={statusFilter}
+                source={sourceFilter}
+                sort={sort}
+                onSearch={(value) => {
+                  setSearch(value);
+                  setOffset(0);
+                  syncFilterUrl({ search: value, offset: 0 });
+                }}
+                onStatus={(value) => {
+                  setStatusFilter(value);
+                  setOffset(0);
+                  syncFilterUrl({ status: value, offset: 0 });
+                }}
+                onSource={(value) => {
+                  setSourceFilter(value);
+                  setOffset(0);
+                  syncFilterUrl({ source: value, offset: 0 });
+                }}
+                onSort={(value) => {
+                  setSort(value);
+                  setOffset(0);
+                  syncFilterUrl({ sort: value, offset: 0 });
+                }}
+                onSelect={(id) => {
+                  navigate(`/sessions/${id}${searchParams.toString() ? `?${searchParams}` : ""}`);
+                }}
+                onPage={(value) => {
+                  setOffset(value);
+                  syncFilterUrl({ offset: value });
+                }}
+              />
+            )}
           </section>
         ) : null}
       </section>
@@ -272,6 +314,7 @@ export function App() {
           <Route element={<DashboardLayout />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/sessions" element={<DashboardPage sessionsOnly />} />
+            <Route path="/sessions/:sessionId" element={<DashboardPage sessionsOnly />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route
               path="/account"

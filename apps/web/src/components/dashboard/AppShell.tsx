@@ -61,7 +61,7 @@ export function AppShell({ account }: { account: Account }) {
             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
             to="/settings"
           >
-            Project settings
+            Workspace settings
           </NavLink>
         </nav>
         <div className="sidebar-foot account-menu">

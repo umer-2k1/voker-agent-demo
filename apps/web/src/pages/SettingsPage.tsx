@@ -88,7 +88,7 @@ export function SettingsPage({ account }: { account: Account }) {
           {projectSlug}
         </span>
       </header>
-      <nav className="mb-6 flex gap-6" aria-label="Settings sections">
+      <nav className="mb-6 !flex gap-6" aria-label="Settings sections">
         <a
           className="border-b-2 border-[#20a28b] pb-3 text-sm font-bold text-[#004d43]"
           href="#profile"

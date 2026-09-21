@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import type { Account } from "@/pages/AccountPage";
 
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001";
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 
 function initials(account: Account) {
   const value = account.display_name?.trim() || account.email;
@@ -63,12 +63,6 @@ export function AppShell({ account }: { account: Account }) {
           >
             Project settings
           </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/account"
-          >
-            Account
-          </NavLink>
         </nav>
         <div className="sidebar-foot account-menu">
           <span className="account-avatar" aria-hidden="true">
@@ -102,7 +96,11 @@ export function AppShell({ account }: { account: Account }) {
           <a href="/#sessions">Sessions</a>
           <a href="/#trace">Trace</a>
           <NavLink to="/settings">Settings</NavLink>
-          <NavLink className="mobile-avatar" to="/account" aria-label="Account">
+          <NavLink
+            className="mobile-avatar"
+            to="/settings#profile"
+            aria-label="Profile settings"
+          >
             {initials(account)}
           </NavLink>
           <button disabled={logout.isPending} onClick={() => logout.mutate()}>

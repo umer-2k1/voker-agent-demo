@@ -22,11 +22,11 @@ import type {
   VoiceSession,
 } from "@/components/dashboard/types";
 import { Badge } from "@/components/ui/badge";
-import { AccountPage, type Account } from "@/pages/AccountPage";
+import type { Account } from "@/pages/AccountPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001";
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
 const ingestKey = import.meta.env.VITE_INGEST_KEY as string | undefined;
 const emptyPage: SessionPage = { offset: 0, limit: 30, total: 0 };
@@ -250,8 +250,11 @@ export function App() {
         <Route element={<RequireDashboardUser />}>
           <Route element={<DashboardLayout />}>
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/account" element={<AccountRoute />} />
+            <Route path="/settings" element={<SettingsRoute />} />
+            <Route
+              path="/account"
+              element={<Navigate replace to="/settings#profile" />}
+            />
           </Route>
         </Route>
         <Route path="*" element={<Navigate replace to="/" />} />
@@ -299,11 +302,11 @@ function DashboardLayout() {
   return <Outlet />;
 }
 
-function AccountRoute() {
+function SettingsRoute() {
   const account = useQuery({
     queryKey: ["account"],
     queryFn: accountRequest,
     retry: false,
   });
-  return account.data ? <AccountPage account={account.data} /> : null;
+  return account.data ? <SettingsPage account={account.data} /> : null;
 }

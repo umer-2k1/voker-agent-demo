@@ -29,6 +29,8 @@ location.
 
 ## Known beta limits
 
+- Ingestion load and restart/partition exercises have not yet been run against a
+  hosted beta environment.
 - Hosted LiveKit end-to-end acceptance requires a running test agent.
 - Vapi real-call acceptance is intentionally skipped until a test call can be connected.
 - Retell acceptance requires an agent in the configured Retell account.

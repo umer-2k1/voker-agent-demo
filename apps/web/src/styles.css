@@ -90,6 +90,66 @@ nav {
 .sidebar-foot span {
   color: #a9ccc6;
 }
+.account-menu {
+  align-items: center;
+  display: grid;
+  gap: 4px 9px;
+  grid-template-columns: 32px minmax(0, 1fr);
+}
+.account-menu .account-avatar {
+  align-items: center;
+  background: #ddeaed;
+  border-radius: 50%;
+  color: #004d43;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  grid-row: 1 / span 2;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+.account-menu b {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-menu > div > span {
+  display: block;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.signout-button {
+  background: transparent;
+  border: 0;
+  color: #d6eeea;
+  cursor: pointer;
+  font-size: 11px;
+  justify-self: start;
+  padding: 0;
+  text-decoration: underline;
+}
+.signout-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+.account-menu small {
+  color: #ffd4cc;
+  font-size: 10px;
+  grid-column: 1 / -1;
+}
+.auth-loading {
+  align-items: center;
+  color: #47615d;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: center;
+  min-height: 100vh;
+}
 .content {
   margin: 0 auto;
   max-width: 1440px;

@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  Link,
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
 
+import { AppShell } from "@/components/dashboard/AppShell";
 import { SessionsPanel } from "@/components/dashboard/SessionsPanel";
 import { OverviewPanel } from "@/components/dashboard/OverviewPanel";
 import { TracePanel } from "@/components/dashboard/TracePanel";
@@ -13,7 +22,7 @@ import type {
   VoiceSession,
 } from "@/components/dashboard/types";
 import { Badge } from "@/components/ui/badge";
-import { AccountPage } from "@/pages/AccountPage";
+import { AccountPage, type Account } from "@/pages/AccountPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 
@@ -165,39 +174,7 @@ function DashboardPage() {
     dashboardError instanceof Error &&
     dashboardError.message === "Sign in required";
   return (
-    <main className="product-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">V</span>
-          <span>Voker</span>
-        </div>
-        <p className="workspace">VOICE INTELLIGENCE</p>
-        <nav aria-label="Primary navigation">
-          <a className="nav-item active" href="#overview">
-            Overview
-          </a>
-          <a className="nav-item" href="#sessions">
-            Sessions
-          </a>
-          <a className="nav-item" href="#trace">
-            Trace explorer
-          </a>
-          <a className="nav-item" href="#insights">
-            Intelligence
-          </a>
-          <Link className="nav-item" to="/settings">
-            Project settings
-          </Link>
-          <Link className="nav-item" to="/account">
-            Account
-          </Link>
-        </nav>
-        <div className="sidebar-foot">
-          {overview?.project.name ?? "Voker Voice"}
-          <br />
-          <span>Development</span>
-        </div>
-      </aside>
+    <>
       <section className="content" id="overview">
         <header className="page-header">
           <div>
@@ -261,7 +238,7 @@ function DashboardPage() {
           />
         </section>
       </section>
-    </main>
+    </>
   );
 }
 
@@ -270,10 +247,63 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/account" element={<AccountPage />} />
-        <Route path="*" element={<DashboardPage />} />
+        <Route element={<RequireDashboardUser />}>
+          <Route element={<DashboardLayout />}>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/account" element={<AccountRoute />} />
+          </Route>
+        </Route>
+        <Route path="*" element={<Navigate replace to="/" />} />
       </Routes>
     </BrowserRouter>
   );
+}
+
+function accountRequest(): Promise<Account | null> {
+  return fetch(`${apiBaseUrl}/auth/me`, { credentials: "include" }).then(
+    async (response) => {
+      if (response.status === 401) return null;
+      if (!response.ok) throw new Error("Unable to verify your session");
+      return response.json() as Promise<Account>;
+    },
+  );
+}
+
+function RequireDashboardUser() {
+  const location = useLocation();
+  const account = useQuery({
+    queryKey: ["account"],
+    queryFn: accountRequest,
+    retry: false,
+  });
+  if (account.isPending)
+    return (
+      <main className="auth-loading" aria-label="Checking your sign-in">
+        <span className="brand-mark">V</span>
+        <p>Checking your secure session…</p>
+      </main>
+    );
+  if (account.data === null)
+    return <Navigate replace to="/login" state={{ from: location.pathname }} />;
+  if (account.isError)
+    return (
+      <main className="auth-loading">
+        <p>We could not verify your session. Please refresh.</p>
+      </main>
+    );
+  return <AppShell account={account.data} />;
+}
+
+function DashboardLayout() {
+  return <Outlet />;
+}
+
+function AccountRoute() {
+  const account = useQuery({
+    queryKey: ["account"],
+    queryFn: accountRequest,
+    retry: false,
+  });
+  return account.data ? <AccountPage account={account.data} /> : null;
 }

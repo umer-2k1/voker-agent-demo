@@ -72,7 +72,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)) -> Re
             )
     db.commit()
     request.session["user_id"] = str(user.id)
-    return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url=get_settings().dashboard_url, status_code=303)
 
 
 @router.get("/me")

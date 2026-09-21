@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: str | None = None
     session_secret: str | None = None
+    dashboard_url: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ROOT / ".env",

@@ -49,6 +49,12 @@ uvicorn voker_voice_api.main:app --app-dir apps/api/src --reload --port 8001
 pnpm dev:web
 ```
 
+For Google sign-in locally, configure the Google redirect URI as
+`http://127.0.0.1:8001/auth/google/callback` and set
+`DASHBOARD_URL=http://localhost:5173` in the ignored root `.env`. For an ngrok
+or deployed API, use that public API callback URL and the matching dashboard
+browser origin instead.
+
 For authenticated live trace refresh in the local dashboard, set `VITE_INGEST_KEY`
 in the ignored root `.env` to a locally created ingest key. It is optional: the
 dashboard remains usable without it, but in-progress traces will refresh only on

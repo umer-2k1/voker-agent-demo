@@ -90,6 +90,9 @@ nav {
 .sidebar-foot span {
   color: #a9ccc6;
 }
+.mobile-dashboard-nav {
+  display: none;
+}
 .account-menu {
   align-items: center;
   display: grid;
@@ -970,6 +973,69 @@ h2 {
   }
   .sidebar {
     display: none;
+  }
+  .mobile-dashboard-nav {
+    align-items: center;
+    background: #004d43;
+    display: flex;
+    gap: 14px;
+    grid-column: 1;
+    min-width: 0;
+    padding: 10px 16px;
+  }
+  .mobile-brand {
+    align-items: center;
+    color: #fff;
+    display: flex;
+    flex: 0 0 auto;
+    font-size: 16px;
+    font-weight: 800;
+    gap: 7px;
+    letter-spacing: -0.04em;
+    text-decoration: none;
+  }
+  .mobile-dashboard-nav nav {
+    align-items: center;
+    display: flex;
+    gap: 4px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .mobile-dashboard-nav nav::-webkit-scrollbar {
+    display: none;
+  }
+  .mobile-dashboard-nav nav a,
+  .mobile-dashboard-nav nav button {
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    color: #d6eeea;
+    cursor: pointer;
+    flex: 0 0 auto;
+    font: inherit;
+    font-size: 12px;
+    padding: 8px 9px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .mobile-dashboard-nav nav a.active {
+    background: #ddeaed;
+    color: #004d43;
+    font-weight: 800;
+  }
+  .mobile-dashboard-nav nav .mobile-avatar {
+    align-items: center;
+    background: #176258;
+    border-radius: 50%;
+    color: #fff;
+    display: inline-flex;
+    font-size: 10px;
+    font-weight: 800;
+    height: 28px;
+    justify-content: center;
+    padding: 0;
+    width: 28px;
   }
   .content {
     padding: 24px;

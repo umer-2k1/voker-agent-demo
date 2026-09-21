@@ -90,6 +90,26 @@ export function AppShell({ account }: { account: Account }) {
           ) : null}
         </div>
       </aside>
+      <header className="mobile-dashboard-nav">
+        <NavLink className="mobile-brand" to="/">
+          <span className="brand-mark">V</span>
+          <span>Voker</span>
+        </NavLink>
+        <nav aria-label="Mobile navigation">
+          <NavLink end to="/">
+            Overview
+          </NavLink>
+          <a href="/#sessions">Sessions</a>
+          <a href="/#trace">Trace</a>
+          <NavLink to="/settings">Settings</NavLink>
+          <NavLink className="mobile-avatar" to="/account" aria-label="Account">
+            {initials(account)}
+          </NavLink>
+          <button disabled={logout.isPending} onClick={() => logout.mutate()}>
+            {logout.isPending ? "…" : "Sign out"}
+          </button>
+        </nav>
+      </header>
       <Outlet />
     </main>
   );

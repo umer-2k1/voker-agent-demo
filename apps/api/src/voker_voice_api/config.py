@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: str | None = None
     session_secret: str | None = None
+    # Keep the dashboard host aligned with the local API host.  `localhost`
+    # and `127.0.0.1` are distinct browser sites, so mixing them prevents the
+    # browser from sending the signed session cookie to `/auth/me`.
     dashboard_url: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(

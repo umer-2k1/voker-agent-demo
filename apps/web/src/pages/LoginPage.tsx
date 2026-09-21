@@ -1,4 +1,6 @@
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001";
+import { useState, type FormEvent } from "react";
+
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 
 function GoogleMark() {
   return (
@@ -25,6 +27,16 @@ function GoogleMark() {
 
 export function LoginPage() {
   const googleLoginUrl = `${apiBaseUrl}/auth/google/login`;
+  const [isRedirecting, setIsRedirecting] = useState(false);
+
+  function beginGoogleSignIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isRedirecting) return;
+    setIsRedirecting(true);
+
+    window.setTimeout(() => window.location.assign(googleLoginUrl), 100);
+  }
+
   return (
     <main className="login-page">
       <section className="login-story">
@@ -69,12 +81,20 @@ export function LoginPage() {
             Sign in with your approved Google account to continue to your voice
             intelligence workspace.
           </p>
-          <form action={googleLoginUrl} method="get">
-            <button className="google-login" type="submit">
+          <form action={googleLoginUrl} method="get" onSubmit={beginGoogleSignIn}>
+            <button
+              aria-busy={isRedirecting}
+              className="google-login"
+              disabled={isRedirecting}
+              type="submit"
+            >
               <GoogleMark />
-              Continue with Google
+              {isRedirecting ? "Opening Google…" : "Continue with Google"}
             </button>
           </form>
+          <p aria-live="polite" className="login-status" role="status">
+            {isRedirecting ? "Redirecting to Google sign-in" : null}
+          </p>
           <p className="login-help">
             Your organization controls access. We only request your basic Google
             profile to create your secure session.

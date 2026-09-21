@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { KeyRound } from "lucide-react";
 import { useState } from "react";
 
 import type { Account } from "@/pages/AccountPage";
@@ -38,6 +39,7 @@ export function SettingsPage({ account }: { account: Account }) {
   const queryClient = useQueryClient();
   const [label, setLabel] = useState("");
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [revokeCandidate, setRevokeCandidate] = useState<ApiKey | null>(null);
   const keys = useQuery({
     queryKey: ["api-keys", projectSlug],
     queryFn: () =>
@@ -63,10 +65,12 @@ export function SettingsPage({ account }: { account: Account }) {
       request(`/api/projects/${projectSlug}/api-keys/${id}/revoke`, {
         method: "POST",
       }),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({
+    onSuccess: () => {
+      setRevokeCandidate(null);
+      return void queryClient.invalidateQueries({
         queryKey: ["api-keys", projectSlug],
-      }),
+      });
+    },
   });
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-10 md:px-10 md:py-14">
@@ -212,6 +216,43 @@ export function SettingsPage({ account }: { account: Account }) {
               {keys.error.message}.
             </p>
           ) : null}
+          {revokeCandidate ? (
+            <section
+              aria-labelledby="revoke-title"
+              className="mt-5 rounded-xl border border-[#efc2bb] bg-[#fff4f2] p-4 text-sm text-[#5e491f]"
+            >
+              <b className="block text-[#7b2d22]" id="revoke-title">
+                Revoke {revokeCandidate.label}?
+              </b>
+              <p className="mt-2 leading-6">
+                This immediately stops {revokeCandidate.environment} agents
+                using this key. Create a replacement key before continuing.
+              </p>
+              {revokeKey.isError ? (
+                <p className="mt-2 font-semibold text-[#9e3325]" role="alert">
+                  Could not revoke this key. Please try again.
+                </p>
+              ) : null}
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  className="rounded-md border border-[#c9ded9] bg-white px-3 py-2 font-semibold text-[#254841]"
+                  disabled={revokeKey.isPending}
+                  onClick={() => setRevokeCandidate(null)}
+                  type="button"
+                >
+                  Keep key
+                </button>
+                <button
+                  className="rounded-md bg-[#9e3325] px-3 py-2 font-semibold text-white disabled:opacity-50"
+                  disabled={revokeKey.isPending}
+                  onClick={() => revokeKey.mutate(revokeCandidate.id)}
+                  type="button"
+                >
+                  {revokeKey.isPending ? "Revoking…" : "Revoke key"}
+                </button>
+              </div>
+            </section>
+          ) : null}
           <div className="mt-5 overflow-hidden rounded-xl border border-[#dce8e5]">
             {keys.data?.items.length ? (
               keys.data.items.map((key) => (
@@ -219,8 +260,11 @@ export function SettingsPage({ account }: { account: Account }) {
                   className="grid grid-cols-[30px_minmax(0,1fr)_auto] items-center gap-3 border-b border-[#e7eeec] p-4 last:border-0"
                   key={key.id}
                 >
-                  <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#eaf5f3] font-bold text-[#176258]">
-                    ⌘
+                  <span
+                    aria-hidden="true"
+                    className="grid h-8 w-8 place-items-center rounded-lg bg-[#eaf5f3] text-[#176258]"
+                  >
+                    <KeyRound size={15} strokeWidth={2} />
                   </span>
                   <span className="min-w-0">
                     <b className="block truncate text-sm text-[#254841]">
@@ -238,8 +282,7 @@ export function SettingsPage({ account }: { account: Account }) {
                     <button
                       className="rounded-md border border-[#e2b5ad] px-2.5 py-1.5 text-xs font-semibold text-[#a73d30] hover:bg-[#fff4f2]"
                       type="button"
-                      onClick={() => revokeKey.mutate(key.id)}
-                      disabled={revokeKey.isPending}
+                      onClick={() => setRevokeCandidate(key)}
                     >
                       Revoke
                     </button>

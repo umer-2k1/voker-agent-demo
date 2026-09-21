@@ -48,12 +48,18 @@ export function AppShell({ account }: { account: Account }) {
           >
             Overview
           </NavLink>
-          <a className="nav-item" href="/#sessions">
+          <NavLink
+            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+            to="/sessions"
+          >
             Sessions
-          </a>
-          <a className="nav-item" href="/#trace">
+          </NavLink>
+          <NavLink
+            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+            to="/sessions#trace"
+          >
             Trace explorer
-          </a>
+          </NavLink>
           <a className="nav-item" href="/#insights">
             Intelligence
           </a>
@@ -93,8 +99,8 @@ export function AppShell({ account }: { account: Account }) {
           <NavLink end to="/">
             Overview
           </NavLink>
-          <a href="/#sessions">Sessions</a>
-          <a href="/#trace">Trace</a>
+          <NavLink to="/sessions">Sessions</NavLink>
+          <NavLink to="/sessions#trace">Trace</NavLink>
           <NavLink to="/settings">Settings</NavLink>
           <NavLink
             className="mobile-avatar"

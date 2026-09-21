@@ -50,8 +50,10 @@ pnpm dev:web
 ```
 
 For Google sign-in locally, configure the Google redirect URI as
-`http://127.0.0.1:8001/auth/google/callback` and set
-`DASHBOARD_URL=http://localhost:5173` in the ignored root `.env`. For an ngrok
+`http://localhost:8001/auth/google/callback` and set
+`DASHBOARD_URL=http://localhost:5173` in the ignored root `.env`. The API and
+dashboard must use the same local host name: `localhost` and `127.0.0.1` do not
+share browser session cookies. For an ngrok
 or deployed API, use that public API callback URL and the matching dashboard
 browser origin instead.
 

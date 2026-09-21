@@ -29,14 +29,28 @@ export function SessionsPanel({
   onSelect(id: string): void;
   onPage(offset: number): void;
 }) {
+  const triagedSessions = [...sessions].sort((left, right) => {
+    const leftPriority =
+      left.error_count > 0 ? 0 : left.status === "in_progress" ? 1 : 2;
+    const rightPriority =
+      right.error_count > 0 ? 0 : right.status === "in_progress" ? 1 : 2;
+    return leftPriority - rightPriority;
+  });
+  const needsAttention = sessions.filter(
+    (session) => session.error_count > 0,
+  ).length;
   return (
     <Card className="panel sessions-panel" id="sessions">
       <CardHeader className="panel-heading">
         <div>
-          <p className="eyebrow">Recent activity</p>
-          <h2>Captured sessions</h2>
+          <p className="eyebrow">Investigation queue</p>
+          <h2>Sessions needing attention</h2>
         </div>
-        <span>{page.total} captured</span>
+        <span>
+          {needsAttention
+            ? `${needsAttention} need review`
+            : `${page.total} captured`}
+        </span>
       </CardHeader>
       {loading ? <LoadingSkeleton rows={5} /> : null}
       {!loading && !sessions.length ? (
@@ -70,7 +84,7 @@ export function SessionsPanel({
         />
       </div>
       <div className="session-list">
-        {sessions.map((session) => (
+        {triagedSessions.map((session) => (
           <button
             key={session.id}
             className={`session-row ${selectedId === session.id ? "selected" : ""}`}

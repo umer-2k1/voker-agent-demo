@@ -8,6 +8,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useSearchParams,
 } from "react-router-dom";
 
 import { AppShell } from "@/components/dashboard/AppShell";
@@ -48,14 +49,15 @@ async function dashboardRequest<T>(
   return response.json() as Promise<T>;
 }
 
-function DashboardPage() {
+function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
-    null,
+    () => searchParams.get("session"),
   );
   const overviewQuery = useQuery({
     queryKey: ["overview", projectSlug],
@@ -175,11 +177,15 @@ function DashboardPage() {
     dashboardError.message === "Sign in required";
   return (
     <>
-      <section className="content" id="overview">
+      <section className="content" id={sessionsOnly ? "sessions" : "overview"}>
         <header className="page-header">
           <div>
             <p className="eyebrow">Voice-agent observability</p>
-            <h1>Voice-agent intelligence, built on trustworthy traces.</h1>
+            <h1>
+              {sessionsOnly
+                ? "Investigate sessions with evidence."
+                : "Workspace health at a glance."}
+            </h1>
           </div>
           <Badge className="live-indicator">
             <i /> Live data
@@ -192,51 +198,66 @@ function DashboardPage() {
               <Link to="/login">Sign in with Google</Link>
             ) : (
               <>
-                Start the API at <code>127.0.0.1:8001</code> and refresh.
+                Start the API at <code>localhost:8001</code> and refresh.
               </>
             )}
           </div>
         ) : null}
-        <OverviewPanel
-          overview={overview}
-          analytics={analytics}
-          findingsCount={trace?.findings.length ?? 0}
-          loading={overviewQuery.isPending || analyticsQuery.isPending}
-        />
-        <section className="workspace-grid">
-          <SessionsPanel
-            sessions={sessions}
-            page={page}
-            loading={sessionsQuery.isPending}
-            selectedId={activeSessionId ?? undefined}
-            search={search}
-            status={statusFilter}
-            source={sourceFilter}
-            onSearch={(value) => {
-              setSearch(value);
-              setOffset(0);
-            }}
-            onStatus={(value) => {
-              setStatusFilter(value);
-              setOffset(0);
-            }}
-            onSource={(value) => {
-              setSourceFilter(value);
-              setOffset(0);
-            }}
-            onSelect={setSelectedSessionId}
-            onPage={setOffset}
+        {!sessionsOnly ? (
+          <OverviewPanel
+            overview={overview}
+            analytics={analytics}
+            findingsCount={trace?.findings.length ?? 0}
+            loading={overviewQuery.isPending || analyticsQuery.isPending}
           />
-          <TracePanel
-            trace={trace}
-            apiBaseUrl={apiBaseUrl}
-            projectSlug={projectSlug}
-            reanalyzing={reanalysisMutation.isPending}
-            onReanalyze={() =>
-              trace && reanalysisMutation.mutate(trace.session.id)
-            }
-          />
-        </section>
+        ) : null}
+        {sessionsOnly ? (
+          <section className="workspace-grid">
+            <SessionsPanel
+              sessions={sessions}
+              page={page}
+              loading={sessionsQuery.isPending}
+              selectedId={activeSessionId ?? undefined}
+              search={search}
+              status={statusFilter}
+              source={sourceFilter}
+              onSearch={(value) => {
+                setSearch(value);
+                setOffset(0);
+              }}
+              onStatus={(value) => {
+                setStatusFilter(value);
+                setOffset(0);
+              }}
+              onSource={(value) => {
+                setSourceFilter(value);
+                setOffset(0);
+              }}
+              onSelect={(id) => {
+                setSelectedSessionId(id);
+                setSearchParams((current) => {
+                  current.set("session", id);
+                  return current;
+                });
+              }}
+              onPage={setOffset}
+            />
+            <TracePanel
+              trace={trace}
+              apiBaseUrl={apiBaseUrl}
+              projectSlug={projectSlug}
+              reanalyzing={reanalysisMutation.isPending}
+              reanalysisError={
+                reanalysisMutation.error instanceof Error
+                  ? reanalysisMutation.error.message
+                  : null
+              }
+              onReanalyze={() =>
+                trace && reanalysisMutation.mutate(trace.session.id)
+              }
+            />
+          </section>
+        ) : null}
       </section>
     </>
   );
@@ -250,6 +271,7 @@ export function App() {
         <Route element={<RequireDashboardUser />}>
           <Route element={<DashboardLayout />}>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/sessions" element={<DashboardPage sessionsOnly />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route
               path="/account"

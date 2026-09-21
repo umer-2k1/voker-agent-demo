@@ -20,7 +20,8 @@
     "react": "latest",
     "react-dom": "latest",
     "react-router-dom": "^7.18.4",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "wavesurfer.js": "^7.12.12"
   },
   "devDependencies": {
     "@eslint/js": "latest",

@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import WaveSurfer from "wavesurfer.js";
 
 import { Card, CardHeader } from "@/components/ui/card";
 import type { Trace } from "@/components/dashboard/types";
@@ -20,6 +21,57 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function WaveformPlayer({
+  src,
+  onReady,
+  onTimeUpdate,
+}: {
+  src: string;
+  onReady(wave: WaveSurfer | null): void;
+  onTimeUpdate(seconds: number): void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const waveRef = useRef<WaveSurfer | null>(null);
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const wave = WaveSurfer.create({
+      container: containerRef.current,
+      cursorColor: "#004d43",
+      height: 42,
+      progressColor: "#176258",
+      waveColor: "#b8d4ce",
+      barWidth: 2,
+      barGap: 2,
+      barRadius: 2,
+    });
+    waveRef.current = wave;
+    onReady(wave);
+    wave.load(src);
+    wave.on("play", () => setPlaying(true));
+    wave.on("pause", () => setPlaying(false));
+    wave.on("finish", () => setPlaying(false));
+    wave.on("timeupdate", onTimeUpdate);
+    return () => {
+      waveRef.current = null;
+      onReady(null);
+      wave.destroy();
+    };
+  }, [onReady, onTimeUpdate, src]);
+  return (
+    <div className="waveform-player">
+      <button
+        className="waveform-toggle"
+        onClick={() => waveRef.current?.playPause()}
+        type="button"
+      >
+        {playing ? "Pause" : "Play"}
+      </button>
+      <div ref={containerRef} aria-label="Call recording waveform" />
+    </div>
+  );
+}
+
 function turnOffsetSeconds(
   turn: Trace["turns"][number],
   session: Trace["session"],
@@ -37,12 +89,14 @@ export function TracePanel({
   apiBaseUrl,
   projectSlug,
   reanalyzing,
+  reanalysisError,
   onReanalyze,
 }: {
   trace: Trace | null;
   apiBaseUrl: string;
   projectSlug: string;
   reanalyzing: boolean;
+  reanalysisError: string | null;
   onReanalyze(): void;
 }) {
   if (!trace) {
@@ -68,6 +122,7 @@ export function TracePanel({
       apiBaseUrl={apiBaseUrl}
       projectSlug={projectSlug}
       reanalyzing={reanalyzing}
+      reanalysisError={reanalysisError}
       onReanalyze={onReanalyze}
     />
   );
@@ -78,12 +133,14 @@ function TracePanelContent({
   apiBaseUrl,
   projectSlug,
   reanalyzing,
+  reanalysisError,
   onReanalyze,
 }: {
   trace: Trace;
   apiBaseUrl: string;
   projectSlug: string;
   reanalyzing: boolean;
+  reanalysisError: string | null;
   onReanalyze(): void;
 }) {
   const [showRaw, setShowRaw] = useState(false);
@@ -93,7 +150,13 @@ function TracePanelContent({
       trace.recordings.find((item) => item.status === "available")?.id ?? null,
   );
   const [playheadSeconds, setPlayheadSeconds] = useState(0);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const waveformRef = useRef<WaveSurfer | null>(null);
+  const handleWaveReady = useCallback((wave: WaveSurfer | null) => {
+    waveformRef.current = wave;
+  }, []);
+  const handleWaveTimeUpdate = useCallback((seconds: number) => {
+    setPlayheadSeconds(seconds);
+  }, []);
 
   const visibleEvents = trace?.events.filter((event) => {
     if (traceFilter === "all") return true;
@@ -108,11 +171,11 @@ function TracePanelContent({
   );
 
   function seekToTurn(turn: Trace["turns"][number]) {
-    if (!trace || !audioRef.current || !activeRecording) return;
+    if (!trace || !waveformRef.current || !activeRecording) return;
     const offset = turnOffsetSeconds(turn, trace.session);
-    audioRef.current.currentTime = offset;
+    waveformRef.current.setTime(offset);
     setPlayheadSeconds(offset);
-    void audioRef.current.play();
+    void waveformRef.current.play();
   }
 
   return (
@@ -143,13 +206,9 @@ function TracePanelContent({
                     {formatLatency(activeRecording.duration_ms)}
                   </small>
                 </div>
-                <audio
-                  controls
-                  onTimeUpdate={(event) =>
-                    setPlayheadSeconds(event.currentTarget.currentTime)
-                  }
-                  preload="metadata"
-                  ref={audioRef}
+                <WaveformPlayer
+                  onReady={handleWaveReady}
+                  onTimeUpdate={handleWaveTimeUpdate}
                   src={`${apiBaseUrl}/api/projects/${projectSlug}/sessions/${trace.session.id}/recordings/${activeRecording.id}/playback`}
                 />
               </div>
@@ -217,6 +276,11 @@ function TracePanelContent({
                 {run.model ? ` · ${run.model}` : ""}
               </small>
             ))}
+            {reanalysisError ? (
+              <p className="trace-action-error" role="alert">
+                Analysis could not be queued: {reanalysisError}
+              </p>
+            ) : null}
           </div>
           <div className="trace-filters" aria-label="Trace event filters">
             <button

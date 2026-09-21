@@ -1,3 +1,5 @@
+import { type MouseEvent, useState } from "react";
+
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001";
 
 function GoogleMark() {
@@ -24,6 +26,13 @@ function GoogleMark() {
 }
 
 export function LoginPage() {
+  const [redirecting, setRedirecting] = useState(false);
+  const googleLoginUrl = `${apiBaseUrl}/auth/google/login`;
+  function beginGoogleLogin(event: MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    setRedirecting(true);
+    window.location.assign(googleLoginUrl);
+  }
   return (
     <main className="login-page">
       <section className="login-story">
@@ -68,9 +77,14 @@ export function LoginPage() {
             Sign in with your approved Google account to continue to your voice
             intelligence workspace.
           </p>
-          <a className="google-login" href={`${apiBaseUrl}/auth/google/login`}>
+          <a
+            className="google-login"
+            href={googleLoginUrl}
+            onClick={beginGoogleLogin}
+            aria-busy={redirecting}
+          >
             <GoogleMark />
-            Continue with Google
+            {redirecting ? "Opening Google…" : "Continue with Google"}
           </a>
           <p className="login-help">
             Your organization controls access. We only request your basic Google

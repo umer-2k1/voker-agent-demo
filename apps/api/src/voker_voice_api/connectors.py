@@ -21,6 +21,12 @@ class ConnectorError(RuntimeError):
     """A provider rejected or returned an invalid connector request."""
 
 
+def _mapping(value: Any) -> dict[str, Any]:
+    """Narrow untrusted provider values to a typed mapping."""
+
+    return value if isinstance(value, dict) else {}
+
+
 def provider_event_id(provider: str, stable_key: str, index: int = 0) -> str:
     digest = hashlib.sha256(f"{provider}:{stable_key}:{index}".encode()).hexdigest()[:40]
     return f"{provider}_{digest}"
@@ -315,7 +321,7 @@ def normalize_vapi(
     message = payload.get("message", payload)
     if not isinstance(message, dict):
         return []
-    call = message.get("call") if isinstance(message.get("call"), dict) else {}
+    call = _mapping(message.get("call"))
     call_id = str(call.get("id") or message.get("callId") or delivery_id)
     event_name = str(message.get("type") or "status-update")
     assistant_id = call.get("assistantId") or message.get("assistantId")
@@ -340,7 +346,7 @@ def normalize_vapi(
             )
         )
 
-    artifact = message.get("artifact") if isinstance(message.get("artifact"), dict) else {}
+    artifact = _mapping(message.get("artifact"))
     messages = artifact.get("messages") or message.get("messages")
     if event_name in {"transcript", "conversation-update", "end-of-call-report"}:
         if event_name == "transcript" and not messages:
@@ -360,7 +366,7 @@ def normalize_vapi(
         failed = isinstance(ended_reason, str) and any(
             word in ended_reason.lower() for word in ("error", "failed", "timeout")
         )
-        analysis = call.get("analysis") if isinstance(call.get("analysis"), dict) else {}
+        analysis = _mapping(call.get("analysis"))
         successful = analysis.get("successEvaluation")
         outcome = "resolved" if successful is True else "failed" if successful is False else None
         attributes: dict[str, Any] = {
@@ -389,7 +395,7 @@ def normalize_vapi(
         events.append(terminal)
 
         cost = call.get("cost") or message.get("cost")
-        usage = call.get("usage") if isinstance(call.get("usage"), dict) else {}
+        usage = _mapping(call.get("usage"))
         usage_event = _base_event("vapi", call_id, "usage", "usage.recorded", ended_at, agent=agent)
         usage_event["usage"] = {
             "provider": "vapi",
@@ -495,7 +501,7 @@ def normalize_retell(
                 occurred_at=ended_at,
             )
         )
-        analysis = call.get("call_analysis") if isinstance(call.get("call_analysis"), dict) else {}
+        analysis = _mapping(call.get("call_analysis"))
         successful = analysis.get("call_successful")
         reason = call.get("disconnection_reason")
         failed = event_name == "call_error" or (
@@ -530,7 +536,7 @@ def normalize_retell(
             }
         events.append(terminal)
 
-        latency = call.get("latency") if isinstance(call.get("latency"), dict) else {}
+        latency = _mapping(call.get("latency"))
         for key, kind in (
             ("e2e", "voice.response_gap"),
             ("llm", "llm.completed"),
@@ -551,10 +557,8 @@ def normalize_retell(
                 latency_event["duration_ms"] = value
                 events.append(latency_event)
 
-        cost = call.get("call_cost") if isinstance(call.get("call_cost"), dict) else {}
-        tokens = (
-            cost.get("llm_token_usage") if isinstance(cost.get("llm_token_usage"), dict) else {}
-        )
+        cost = _mapping(call.get("call_cost"))
+        tokens = _mapping(cost.get("llm_token_usage"))
         combined_cost = cost.get("combined_cost")
         usage_event = _base_event(
             "retell", call_id, f"usage:{event_name}", "usage.recorded", ended_at, agent=agent

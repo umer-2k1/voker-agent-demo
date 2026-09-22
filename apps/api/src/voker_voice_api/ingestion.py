@@ -235,14 +235,12 @@ def upsert_turn(db: Session, session: VoiceSession, event: CanonicalEvent) -> Tu
     if turn is None:
         sequence = event.sequence
         if sequence is None:
-            sequence = (
-                db.scalar(
-                    select(func.coalesce(func.max(Turn.sequence), -1)).where(
-                        Turn.session_id == session.id
-                    )
+            latest_sequence = db.scalar(
+                select(func.coalesce(func.max(Turn.sequence), -1)).where(
+                    Turn.session_id == session.id
                 )
-                + 1
             )
+            sequence = int(latest_sequence if latest_sequence is not None else -1) + 1
         turn = Turn(
             session_id=session.id,
             external_turn_id=event.turn_id,
@@ -576,10 +574,12 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
             enqueue_completion_analysis(db, context.project_id, session.id)
     elif event.event_type == "outcome.recorded":
         outcome = event.attributes.get("outcome")
-        source = event.attributes.get("source")
+        recorded_source = event.attributes.get("source")
         if isinstance(outcome, str):
             session.outcome = outcome
-            session.outcome_source = source if isinstance(source, str) else "explicit"
+            session.outcome_source = (
+                recorded_source if isinstance(recorded_source, str) else "explicit"
+            )
     return "accepted"
 
 

@@ -26,9 +26,11 @@ from voker_voice_api.models import (
     Integration,
     Job,
     Organization,
+    OrganizationMember,
     Project,
     Recording,
     Turn,
+    User,
     WebhookDelivery,
     WebhookReceipt,
 )
@@ -47,6 +49,16 @@ def database() -> tuple[Session, Project, Environment]:
     organization = Organization(name="Connector Test")
     db.add(organization)
     db.flush()
+    user = User(email="connectors@example.test")
+    db.add(user)
+    db.flush()
+    db.add(
+        OrganizationMember(
+            organization_id=organization.id,
+            user_id=user.id,
+            role="owner",
+        )
+    )
     project = Project(organization_id=organization.id, name="Voice", slug="voice")
     db.add(project)
     db.flush()
@@ -165,8 +177,10 @@ def test_retell_signature_and_unknown_values_are_handled() -> None:
 
 def test_managed_connector_workflow_maps_agent_and_reports_health() -> None:
     db, _, _ = database()
+    user = db.scalar(select(User))
+    assert user is not None
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[require_dashboard_user] = lambda: MagicMock()
+    app.dependency_overrides[require_dashboard_user] = lambda: user
     resources = [
         {
             "id": "assistant-1",

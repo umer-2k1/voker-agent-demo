@@ -15,9 +15,11 @@ from voker_voice_api.models import (
     Event,
     Finding,
     Organization,
+    OrganizationMember,
     Project,
     Span,
     UsageRecord,
+    User,
 )
 from voker_voice_api.models import Session as VoiceSession
 from voker_voice_api.routers.dashboard import analytics_overview
@@ -72,6 +74,16 @@ def test_analytics_uses_filtered_aggregates_and_links_representative_sessions() 
     organization = Organization(name="Analytics")
     db.add(organization)
     db.flush()
+    user = User(email="analytics@example.test")
+    db.add(user)
+    db.flush()
+    db.add(
+        OrganizationMember(
+            organization_id=organization.id,
+            user_id=user.id,
+            role="owner",
+        )
+    )
     project = Project(organization_id=organization.id, name="Voice", slug="voice")
     db.add(project)
     db.flush()
@@ -209,7 +221,7 @@ def test_analytics_uses_filtered_aggregates_and_links_representative_sessions() 
     )
     db.commit()
 
-    result = analytics_overview("voice", environment="development", db=db)
+    result = analytics_overview("voice", user, environment="development", db=db)
 
     assert result["session_count"] == 6
     assert result["completed_session_count"] == 6

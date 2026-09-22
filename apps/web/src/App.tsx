@@ -34,7 +34,6 @@ import { SetupPage } from "@/pages/SetupPage";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
-const ingestKey = import.meta.env.VITE_INGEST_KEY as string | undefined;
 const emptyPage: SessionPage = { offset: 0, limit: 30, total: 0 };
 
 async function dashboardRequest<T>(
@@ -215,7 +214,7 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
   const activeSessionId = selectedSessionId;
   const trace = traceQuery.data ?? null;
   const { refetch: refetchTrace } = traceQuery;
-  const liveSessionExternalId = trace?.session.external_session_id;
+  const liveSessionId = trace?.session.id;
   const liveSessionStatus = trace?.session.status;
   const dashboardError =
     overviewQuery.error ??
@@ -255,20 +254,15 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
   }
 
   useEffect(() => {
-    if (
-      !liveSessionExternalId ||
-      !ingestKey ||
-      liveSessionStatus !== "in_progress"
-    )
-      return;
+    if (!liveSessionId || liveSessionStatus !== "in_progress") return;
     const controller = new AbortController();
-    const externalSessionId = liveSessionExternalId;
+    const sessionId = liveSessionId;
     async function stream() {
       try {
         const response = await fetch(
-          `${apiBaseUrl}/v1/live/sessions/${encodeURIComponent(externalSessionId)}`,
+          `${apiBaseUrl}/api/projects/${encodeURIComponent(projectSlug)}/sessions/${encodeURIComponent(sessionId)}/live`,
           {
-            headers: { Authorization: `Bearer ${ingestKey}` },
+            credentials: "include",
             signal: controller.signal,
           },
         );
@@ -288,7 +282,7 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
     }
     void stream();
     return () => controller.abort();
-  }, [liveSessionExternalId, liveSessionStatus, refetchTrace]);
+  }, [liveSessionId, liveSessionStatus, refetchTrace]);
 
   const signInRequired =
     dashboardError instanceof Error &&

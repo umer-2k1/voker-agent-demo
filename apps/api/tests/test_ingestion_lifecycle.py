@@ -13,8 +13,10 @@ from voker_voice_api.models import (
     Environment,
     Job,
     Organization,
+    OrganizationMember,
     Project,
     Span,
+    User,
 )
 from voker_voice_api.models import Session as VoiceSession
 from voker_voice_api.routers.dashboard import get_session_trace, list_sessions, project_setup
@@ -32,6 +34,16 @@ def database() -> tuple[Session, IngestContext]:
     organization = Organization(name="Lifecycle Test")
     db.add(organization)
     db.flush()
+    user = User(email="lifecycle@example.test")
+    db.add(user)
+    db.flush()
+    db.add(
+        OrganizationMember(
+            organization_id=organization.id,
+            user_id=user.id,
+            role="owner",
+        )
+    )
     project = Project(organization_id=organization.id, name="Voice", slug="voice")
     db.add(project)
     db.flush()
@@ -384,7 +396,9 @@ def test_livekit_generated_voice_pipeline_is_accepted_and_nested() -> None:
     assert playback.parent_span_id == tts_span.id
     assert all(span.turn_id is not None for span in spans)
     assert all(span.agent_run_id is not None for span in spans)
-    trace = get_session_trace("voice", voice_session.id, db, event_limit=3)
+    dashboard_user = db.scalar(select(User))
+    assert dashboard_user is not None
+    trace = get_session_trace("voice", voice_session.id, dashboard_user, db, event_limit=3)
     assert trace["session"]["status"] == "completed"
     assert trace["event_page"]["total"] > len(trace["events"])
     assert len(trace["events"]) == 3
@@ -408,6 +422,7 @@ def test_livekit_generated_voice_pipeline_is_accepted_and_nested() -> None:
     assert llm_span["attributes"]["provider"] == "openai"
     filtered = list_sessions(
         "voice",
+        dashboard_user,
         status="completed",
         source="livekit",
         environment="test",
@@ -421,7 +436,7 @@ def test_livekit_generated_voice_pipeline_is_accepted_and_nested() -> None:
     assert filtered["page"]["total"] == 1
     assert filtered["items"][0]["environment"] == "test"
     assert filtered["items"][0]["agent"] == "support"
-    setup = project_setup("voice", db)
+    setup = project_setup("voice", dashboard_user, db)
     assert setup["last_received_event_at"] is not None
     assert {"stt", "llm", "tool", "tts", "playback"} <= set(setup["observed_stages"])
 

@@ -14,7 +14,7 @@ This plan turns the scope in [`voker-voice.md`](./voker-voice.md) into an execut
 - New scope must be placed in the future roadmap unless it is required to satisfy an existing MVP completion criterion.
 - Preserve the current demo until equivalent failure scenarios are available in the new development environment.
 
-## Implementation status — 2026-09-20
+## Implementation status — 2026-09-22
 
 This is a live delivery record, not a projected status report. A checked item has been
 implemented, verified locally, and committed to `main`; an unchecked item remains work.
@@ -26,17 +26,18 @@ implemented, verified locally, and committed to `main`; an unchecked item remain
 | 2 — Ingestion | Complete vertical slice | API-key auth, gzip batches, idempotency, out-of-order span repair, durable PostgreSQL jobs and SSE broker. |
 | 3 — Python SDK | Complete vertical slice | Fail-open queued exporter, redaction, nested spans, tools/MCP and handoffs. |
 | 4 — Trace dashboard | Complete | Live trace refresh, transcript projection, normalized-event inspector, bounded session queries, filters, and pagination are implemented. |
-| 5 — LiveKit | In progress | Public AgentSession observer maps lifecycle, transcript, interruption, talk-over, metrics, and playback events with regression coverage; hosted voice E2E remains. |
+| 5 — LiveKit | Complete for initial release | One-call owned lifecycle, public LiveKit 1.8 event mappings, participant/room metadata, turns, agent runs/handoffs, pipeline spans, voice behavior, provider metrics/errors, fail-open export, canonical ingestion, and trace contracts are verified. Formal hosted acceptance is outside this phase. |
 | 6 — LangGraph | Complete vertical slice | Public callback tracing covers nodes, handoffs, retries, interrupts, resumes, and parallel child spans; the dashboard filters graph/agent and handoff activity. |
 | 7 — Intelligence | Complete vertical slice | Deterministic evidence-linked worker covers errors, cancellation/timeouts, slow stages, interruptions, and talk-over; the evaluator records immutable completed/disabled runs, the dashboard exposes analysis history plus controlled re-analysis, and rollback-only live OpenRouter E2E is verified. |
-| 8 — Vapi | In progress — hosted E2E skipped | Payload normalizer, canonical error mapping, authenticated durable webhook intake, and the configured Vapi assistant webhook connection are implemented. The real test-call verification was skipped because the assistant could not be connected; provider delivery and canonical trace creation remain unverified. |
-| 9 — Retell | In progress — hosted E2E unavailable | Payload normalizer, canonical error mapping, one-time integration token setup, authenticated integration-specific webhook intake, durable receipts, duplicate protection, and deferred normalization are implemented. Retell credentials authenticate, but the account currently has no agents for provider E2E. |
-| 10 — Analytics/costs | Complete vertical slice | Versioned rate-card estimates materialize cost records during ingestion; project outcome/source/cost aggregates, dashboard cost display, minimum-sample interruption/STT cohorts, and stage-specific p50/p95/max latency cards are implemented. Additional cohorts remain future work. |
-| 11 — Recordings | Complete vertical slice | Optional provider/private recording metadata can be attached without copying audio, returned with the canonical trace, deleted without affecting that trace, and expired by maintenance command. Cloudinary-backed audio uses a trace-scoped API redirect to a five-minute authenticated URL; the dashboard plays available audio and seeks/highlights transcript turns by trace-relative timestamp. |
-| 12 — Private beta hardening | In progress — hosted acceptance pending | Readiness reports database/queue state, protected Google sessions, credentialed browser CORS, account/project settings, one-time API-key creation/revocation, and deployment/incident/backup runbooks are included. The routed dashboard is split into overview, sessions, and trace/playback modules, uses TanStack Query with loading/error/empty states, renders real-data charts, and has an automated local Playwright snapshot workflow. Load and hosted provider acceptance coverage remain. |
+| 8 — Vapi | Complete for initial release | Encrypted managed credentials, live resource validation/selection, agent mappings, authenticated durable/deduplicated receipts, deferred rich normalization, existing-webhook forwarding, dashboard health, and controlled provider-contract fixtures are verified. |
+| 9 — Retell | Complete for initial release | Managed agent selection, official timestamped raw-body HMAC verification, durable deferred normalization, duplicate/later-delivery reconciliation, rich canonical data, forwarding, dashboard health, and controlled provider-contract fixtures are verified. |
+| 10 — Analytics/costs | Complete | Bounded filtered database aggregates, evidence-linked comparisons and voice cohorts, missing-data-safe latency, explicit/inferred outcomes, exact/estimated costs, usage units, and versioned development rate cards are verified. |
+| 11 — Recordings | Complete | SDK/provider recording metadata, supported lifecycle states, retention/expiry, project/session-scoped authenticated playback, external HTTPS validation, and deletion independent from canonical traces are verified. |
+| 12 — Private beta hardening | Excluded from Phase 02 | Formal load, restart/outage, browser-matrix, backup certification, and hosted-provider acceptance campaigns are intentionally deferred. The initial release still includes organization/project isolation, mutation roles, scoped streams/recordings, protected credentials, readiness, and functional regression coverage. |
 
-Latest verified commit checkpoints include `64c93c2` (semantic evaluator), `c5fa954`
-(finding evidence in trace API), and `ea2df73` (Vapi/Retell normalization).
+Latest verified commit checkpoints include `ff0444a` (Phase 02 through managed connectors) and
+`2c072b2` (analytics, costs, and recordings). The current Phase 02 tracker is
+[`phase-02-milestones.md`](./phase-02-milestones.md).
 
 ## GitHub repository and commit workflow
 

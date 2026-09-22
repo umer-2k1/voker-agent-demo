@@ -41,6 +41,8 @@ from voker_voice_api.schemas import (
     SessionCreateRequest,
     SessionEndRequest,
     SessionUpdateRequest,
+    SourceIdentity,
+    SpanStatus,
 )
 from voker_voice_api.security import decrypt_connector_secrets, hash_api_key
 
@@ -239,9 +241,9 @@ async def create_session(
         occurred_at=payload.started_at,
         external_session_id=payload.external_session_id,
         trace_id=payload.trace_id,
-        source={"integration": payload.source},
+        source=SourceIdentity(integration=payload.source),
         attributes=payload.metadata,
-        status="ok",
+        status=SpanStatus.OK,
     )
     session = session_for_event(db, context, event)
     db.commit()
@@ -344,8 +346,19 @@ def create_recording(
 @router.get("/live/sessions/{external_session_id}")
 async def stream_session_events(
     external_session_id: str,
-    _: IngestContext = Depends(require_ingest_context),
+    context: IngestContext = Depends(require_ingest_context),
+    db: Session = Depends(get_db),
 ) -> StreamingResponse:
+    session = db.scalar(
+        select(VoiceSession.id).where(
+            VoiceSession.project_id == context.resolved_project_id,
+            VoiceSession.environment_id == context.resolved_environment_id,
+            VoiceSession.external_session_id == external_session_id,
+        )
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
     async def event_stream() -> AsyncIterator[str]:
         async for payload in broker.subscribe(external_session_id):
             yield f"event: trace\ndata: {payload}\n\n"

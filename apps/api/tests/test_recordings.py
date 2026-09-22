@@ -92,7 +92,8 @@ def test_playback_redirects_only_available_cloudinary_recordings(monkeypatch) ->
     db = MagicMock()
     project = MagicMock()
     project.id = "project-id"
-    db.scalar.side_effect = [project, recording]
+    db.scalars.return_value.all.return_value = [project]
+    db.scalar.return_value = recording
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_dashboard_user] = lambda: MagicMock()
     monkeypatch.setattr(

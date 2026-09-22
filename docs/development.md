@@ -69,16 +69,16 @@ share browser session cookies. For an ngrok
 or deployed API, use that public API callback URL and the matching dashboard
 browser origin instead.
 
-For authenticated live trace refresh in the local dashboard, set `VITE_INGEST_KEY`
-in the ignored root `.env` to a locally created ingest key. It is optional: the
-dashboard remains usable without it, but in-progress traces will refresh only on
-manual navigation.
+Live trace refresh uses the signed-in dashboard session and the project/session-scoped
+dashboard stream endpoint. Never expose an ingest key through a `VITE_*` variable or
+other browser-delivered configuration.
 
 ## Validate
 
 ```bash
 source venv/bin/activate
 python -m ruff check apps/api packages/python-sdk
+python -m mypy apps/api/src packages/python-sdk/src
 python -m pytest
 pnpm lint:web
 pnpm test:web

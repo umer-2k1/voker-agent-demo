@@ -1,6 +1,6 @@
 # Voker Voice — Phase 02 Functional Completion Milestones
 
-Status: implementation in progress
+Status: complete
 Audience: product, backend, frontend, SDK, and integration engineers
 Source of truth: [`voker-voice.md`](./voker-voice.md)
 Related delivery record: [`milestones.md`](./milestones.md)
@@ -20,12 +20,11 @@ Last updated: 2026-09-22
 | 2.7 Vapi | Complete | 100% | Encrypted credential storage, live API validation/resource selection, Voker-agent mapping, authenticated webhook configuration, durable/deduplicated receipts, asynchronous rich canonical normalization, existing-destination forwarding with retry/disable state, dashboard health, and controlled full-call fixtures verified. |
 | 2.8 Retell | Complete | 100% | Shared managed workflow, agent selection/mapping, webhook registration, official raw-body timestamped HMAC verification, durable deferred normalization, partial/later delivery reconciliation, rich canonical call data, shared dashboard health, and controlled full-call fixtures verified. |
 | 2.9 Analytics, costs, recordings | Complete | 100% | Bounded database aggregates, environment/time filters, evidence-linked cohorts, outcome provenance, exact/estimated costs, versioned rate cards, validated recording lifecycle/retention, authenticated playback, controlled reconciliation fixtures, and dashboard filters verified. |
-| Initial-release safeguards | In progress | 0% | Functional organization/project isolation, mutation roles, scoped live streams, and frontend ingest-key removal remain. |
+| Initial-release safeguards | Complete | 100% | Organization-scoped reads, duplicate-slug fail-closed behavior, owner/admin mutation roles, credential-safe responses, project/environment/session-scoped live streams and recordings, frontend ingest-key removal, and secret-redaction tests verified. |
 
-Current Phase 02 completion: **90%** (nine implementation milestones complete; the final
-initial-release safeguard gate remains).
+Current Phase 02 completion: **100%**.
 
-Remaining Phase 02 work: **10%**.
+Remaining Phase 02 work: **0%**.
 
 ### Current checkpoint
 
@@ -36,12 +35,13 @@ Remaining Phase 02 work: **10%**.
 - Vapi and Retell hosted calls were not required for this initial-release phase. Their complete-call,
   duplicate-delivery, later-analysis, missing-data, and forwarding behavior is verified with
   deterministic provider-contract fixtures and mocked official API responses.
-- Continue with the minimum initial-release safeguards and the full Phase 02 quality gate.
+- The minimum initial-release safeguards and full Phase 02 quality gate are complete.
 
 ### Current verification state
 
-- API tests: 56 passing, including aggregate reconciliation, cost-rate-card, recording-state, and
-  managed-connector/provider contract scenarios.
+- API tests: 59 passing, including organization/project isolation, mutation roles, scoped streams,
+  aggregate reconciliation, cost-rate-card, recording-state, and provider contract scenarios.
+- Combined Python suite: 95 tests passing across the API and SDK.
 - Shared canonical fixture validation: passing against JSON Schema and Pydantic.
 - Scoped-trace PostgreSQL migration: upgrade, downgrade, and re-upgrade verified on PostgreSQL 16.
 - Python SDK: Ruff, strict MyPy, and focused tests passing.
@@ -60,7 +60,8 @@ Remaining Phase 02 work: **10%**.
   evidence-linked comparisons/cohorts, missing-data-safe latency, exact-versus-estimated cost,
   usage units, recording validation/expiry, and authenticated playback pass API and web suites.
 - Frontend: 6 tests pass, the production build succeeds, and ESLint reports no errors.
-- Next implementation target: minimum initial-release safeguards.
+- Repository quality gate: Ruff and strict MyPy pass across all Python source; frontend tests,
+  production build, and lint pass. Four pre-existing Fast Refresh advisories remain warnings only.
 
 ## 1. Phase objective
 
@@ -626,14 +627,14 @@ Turn correct individual traces into useful aggregate product insight and optiona
 Phase 02 intentionally avoids an enterprise-security project. The following safeguards are still
 required for correct multi-user functionality:
 
-- [ ] A signed-in user can read only projects belonging to their organization.
-- [ ] Only an appropriate project role can create or revoke keys/integrations.
-- [ ] Project lookup cannot collide when two organizations use the same slug.
-- [ ] Ingest keys are never included in the frontend bundle.
-- [ ] Live streams are scoped to the authorized project/environment/session.
-- [ ] Provider credentials are not returned after creation.
-- [ ] Recordings are scoped to the authorized project and session.
-- [ ] Captured secrets are redacted before export or evaluator submission.
+- [x] A signed-in user can read only projects belonging to their organization.
+- [x] Only an appropriate project role can create or revoke keys/integrations.
+- [x] Project lookup cannot collide when two organizations use the same slug.
+- [x] Ingest keys are never included in the frontend bundle.
+- [x] Live streams are scoped to the authorized project/environment/session.
+- [x] Provider credentials are not returned after creation.
+- [x] Recordings are scoped to the authorized project and session.
+- [x] Captured secrets are redacted before export or evaluator submission.
 
 These are functional isolation requirements, not enterprise access-control scope.
 
@@ -653,11 +654,11 @@ pnpm build:web
 
 Before a milestone is marked complete:
 
-- [ ] Fix new and existing failures in the affected code path.
-- [ ] Add tests for the acceptance behavior, not only helper functions.
-- [ ] Verify the implemented public API matches the documented example.
-- [ ] Verify no secret or real captured payload is included in fixtures or snapshots.
-- [ ] Update `docs/milestones.md` only after the exit criteria are actually satisfied.
+- [x] Fix new and existing failures in the affected code path.
+- [x] Add tests for the acceptance behavior, not only helper functions.
+- [x] Verify the implemented public API matches the documented example.
+- [x] Verify no secret or real captured payload is included in fixtures or snapshots.
+- [x] Update `docs/milestones.md` only after the exit criteria are actually satisfied.
 
 ## 16. Recommended delivery checkpoints
 

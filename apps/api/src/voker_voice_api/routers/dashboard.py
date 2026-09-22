@@ -1,12 +1,13 @@
 import re
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import case, exists, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -15,10 +16,12 @@ from voker_voice_api.bootstrap import create_ingest_key
 from voker_voice_api.config import REPOSITORY_ROOT, get_settings
 from voker_voice_api.connectors import (
     ConnectorError,
+    Provider,
     configure_provider_resources,
     list_provider_resources,
 )
 from voker_voice_api.database import get_db
+from voker_voice_api.live import broker
 from voker_voice_api.models import (
     Agent,
     AgentRun,
@@ -33,11 +36,13 @@ from voker_voice_api.models import (
     FindingEvidence,
     Integration,
     Job,
+    OrganizationMember,
     Project,
     Recording,
     Span,
     Turn,
     UsageRecord,
+    User,
     WebhookDelivery,
     WebhookReceipt,
 )
@@ -61,6 +66,9 @@ router = APIRouter(
     prefix="/api", tags=["dashboard"], dependencies=[Depends(require_dashboard_user)]
 )
 
+AuthenticatedUser = Annotated[User, Depends(require_dashboard_user)]
+PROJECT_ADMIN_ROLES = {"owner", "admin"}
+
 
 def timestamp(value: datetime | None) -> str | None:
     return value.astimezone(UTC).isoformat() if value is not None else None
@@ -70,16 +78,48 @@ def json_number(value: int | float | Decimal | None) -> float | int | None:
     return float(value) if isinstance(value, Decimal) else value
 
 
-def project_for_slug(db: Session, project_slug: str) -> Project:
-    project = db.scalar(select(Project).where(Project.slug == project_slug))
-    if project is None:
+def project_for_slug(db: Session, project_slug: str, user: User) -> Project:
+    """Resolve a slug only inside organizations the signed-in user belongs to."""
+
+    projects = db.scalars(
+        select(Project)
+        .join(
+            OrganizationMember,
+            OrganizationMember.organization_id == Project.organization_id,
+        )
+        .where(
+            Project.slug == project_slug,
+            OrganizationMember.user_id == user.id,
+        )
+        .order_by(Project.id)
+        .limit(2)
+    ).all()
+    if not projects:
         raise HTTPException(status_code=404, detail="Project not found")
-    return project
+    if len(projects) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail="Project slug is ambiguous across your organizations; use a unique slug",
+        )
+    return projects[0]
+
+
+def require_project_admin(db: Session, project: Project, user: User) -> None:
+    role = db.scalar(
+        select(OrganizationMember.role).where(
+            OrganizationMember.organization_id == project.organization_id,
+            OrganizationMember.user_id == user.id,
+        )
+    )
+    if role not in PROJECT_ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Project owner or admin role required")
 
 
 @router.get("/projects/{project_slug}/api-keys")
-def list_api_keys(project_slug: str, db: Session = Depends(get_db)) -> dict[str, Any]:
-    project = project_for_slug(db, project_slug)
+def list_api_keys(
+    project_slug: str, user: AuthenticatedUser, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    project = project_for_slug(db, project_slug, user)
     keys = db.scalars(
         select(APIKey, Environment)
         .join(Environment, APIKey.environment_id == Environment.id)
@@ -104,9 +144,13 @@ def list_api_keys(project_slug: str, db: Session = Depends(get_db)) -> dict[str,
 
 @router.post("/projects/{project_slug}/api-keys", status_code=201)
 def create_api_key(
-    project_slug: str, payload: dict[str, str] = Body(...), db: Session = Depends(get_db)
+    project_slug: str,
+    user: AuthenticatedUser,
+    payload: dict[str, str] = Body(...),
+    db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
+    require_project_admin(db, project, user)
     environment = db.scalar(
         select(Environment).where(
             Environment.project_id == project.id,
@@ -125,9 +169,13 @@ def create_api_key(
 
 @router.post("/projects/{project_slug}/api-keys/{key_id}/revoke")
 def revoke_api_key(
-    project_slug: str, key_id: UUID, db: Session = Depends(get_db)
+    project_slug: str,
+    key_id: UUID,
+    user: AuthenticatedUser,
+    db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
+    require_project_admin(db, project, user)
     key = db.scalar(select(APIKey).where(APIKey.id == key_id, APIKey.project_id == project.id))
     if key is None:
         raise HTTPException(status_code=404, detail="API key not found")
@@ -137,8 +185,10 @@ def revoke_api_key(
 
 
 @router.get("/projects/{project_slug}/integrations")
-def list_integrations(project_slug: str, db: Session = Depends(get_db)) -> dict[str, Any]:
-    project = project_for_slug(db, project_slug)
+def list_integrations(
+    project_slug: str, user: AuthenticatedUser, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    project = project_for_slug(db, project_slug, user)
     integrations = db.scalars(
         select(Integration)
         .where(Integration.project_id == project.id)
@@ -190,12 +240,14 @@ def integration_summary(db: Session, item: Integration) -> dict[str, Any]:
 @router.post("/projects/{project_slug}/integrations", status_code=201)
 def create_integration(
     project_slug: str,
+    user: AuthenticatedUser,
     payload: dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Validate and store a managed provider credential."""
 
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
+    require_project_admin(db, project, user)
     provider = payload.get("provider", "")
     name = payload.get("name", "")
     external_id = payload.get("external_id")
@@ -252,15 +304,25 @@ def managed_integration(db: Session, project_id: UUID, integration_id: UUID) -> 
     return integration
 
 
+def integration_provider(integration: Integration) -> Provider:
+    if integration.provider not in {"vapi", "retell"}:
+        raise HTTPException(status_code=422, detail="Unsupported managed provider")
+    return cast(Provider, integration.provider)
+
+
 @router.get("/projects/{project_slug}/integrations/{integration_id}/resources")
 def integration_resources(
-    project_slug: str, integration_id: UUID, db: Session = Depends(get_db)
+    project_slug: str,
+    integration_id: UUID,
+    user: AuthenticatedUser,
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
+    require_project_admin(db, project, user)
     integration = managed_integration(db, project.id, integration_id)
     try:
         api_key = decrypt_connector_secrets(integration.encrypted_credentials)["api_key"]
-        resources = list_provider_resources(integration.provider, api_key)
+        resources = list_provider_resources(integration_provider(integration), api_key)
     except (ConnectorError, KeyError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     integration.config = {**integration.config, "available_resources": resources}
@@ -272,10 +334,12 @@ def integration_resources(
 def configure_integration(
     project_slug: str,
     integration_id: UUID,
+    user: AuthenticatedUser,
     payload: dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
+    require_project_admin(db, project, user)
     integration = managed_integration(db, project.id, integration_id)
     selected_ids = payload.get("selected_ids")
     public_base_url = payload.get("public_base_url")
@@ -300,13 +364,14 @@ def configure_integration(
     if environment is None:
         raise HTTPException(status_code=422, detail="Unknown environment")
     try:
+        provider = integration_provider(integration)
         secrets = decrypt_connector_secrets(integration.encrypted_credentials)
-        resources = list_provider_resources(integration.provider, secrets["api_key"])
+        resources = list_provider_resources(provider, secrets["api_key"])
         webhook_url = (
             f"{public_base_url.rstrip('/')}/v1/webhooks/{integration.provider}/{integration.id}"
         )
         forwarding_urls = configure_provider_resources(
-            integration.provider,
+            provider,
             secrets["api_key"],
             resources,
             selected_ids,
@@ -357,10 +422,12 @@ def configure_integration(
 def update_integration(
     project_slug: str,
     integration_id: UUID,
+    user: AuthenticatedUser,
     payload: dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
+    require_project_admin(db, project, user)
     integration = managed_integration(db, project.id, integration_id)
     if "enabled" in payload:
         integration.status = "active" if bool(payload["enabled"]) else "disabled"
@@ -395,8 +462,16 @@ def session_summary(session: VoiceSession, error_count: int, event_count: int) -
 
 
 @router.get("/projects")
-def list_projects(db: Session = Depends(get_db)) -> dict[str, Any]:
-    projects = db.scalars(select(Project).order_by(Project.name, Project.id)).all()
+def list_projects(user: AuthenticatedUser, db: Session = Depends(get_db)) -> dict[str, Any]:
+    projects = db.scalars(
+        select(Project)
+        .join(
+            OrganizationMember,
+            OrganizationMember.organization_id == Project.organization_id,
+        )
+        .where(OrganizationMember.user_id == user.id)
+        .order_by(Project.name, Project.id)
+    ).all()
     return {
         "items": [
             {"id": str(project.id), "name": project.name, "slug": project.slug}
@@ -406,10 +481,12 @@ def list_projects(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.get("/projects/{project_slug}/setup")
-def project_setup(project_slug: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+def project_setup(
+    project_slug: str, user: AuthenticatedUser, db: Session = Depends(get_db)
+) -> dict[str, Any]:
     """Return observed integration state separately from setup instructions."""
 
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
     environments = db.scalars(
         select(Environment)
         .where(Environment.project_id == project.id)
@@ -453,8 +530,10 @@ def project_setup(project_slug: str, db: Session = Depends(get_db)) -> dict[str,
 
 
 @router.get("/projects/{project_slug}/overview")
-def project_overview(project_slug: str, db: Session = Depends(get_db)) -> dict[str, Any]:
-    project = project_for_slug(db, project_slug)
+def project_overview(
+    project_slug: str, user: AuthenticatedUser, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    project = project_for_slug(db, project_slug, user)
     total_sessions = (
         db.scalar(
             select(func.count())
@@ -499,8 +578,10 @@ def project_overview(project_slug: str, db: Session = Depends(get_db)) -> dict[s
 
 
 @router.get("/projects/{project_slug}/settings")
-def project_settings(project_slug: str, db: Session = Depends(get_db)) -> dict[str, Any]:
-    project = project_for_slug(db, project_slug)
+def project_settings(
+    project_slug: str, user: AuthenticatedUser, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    project = project_for_slug(db, project_slug, user)
     return {
         "semantic_analysis_enabled": project.semantic_analysis_enabled,
         "semantic_content_exclusions": project.semantic_content_exclusions,
@@ -510,10 +591,12 @@ def project_settings(project_slug: str, db: Session = Depends(get_db)) -> dict[s
 @router.patch("/projects/{project_slug}/settings")
 def update_project_settings(
     project_slug: str,
+    user: AuthenticatedUser,
     payload: dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
+    require_project_admin(db, project, user)
     if "semantic_analysis_enabled" in payload:
         enabled = payload["semantic_analysis_enabled"]
         if not isinstance(enabled, bool):
@@ -543,6 +626,7 @@ def update_project_settings(
 @router.get("/projects/{project_slug}/analytics/overview")
 def analytics_overview(
     project_slug: str,
+    user: AuthenticatedUser,
     environment: str | None = None,
     started_after: datetime | None = None,
     started_before: datetime | None = None,
@@ -550,7 +634,7 @@ def analytics_overview(
 ) -> dict[str, Any]:
     """Database-bounded aggregates that retain unobserved values as unknown."""
 
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
     conditions = [VoiceSession.project_id == project.id]
     if environment:
         conditions.append(
@@ -994,6 +1078,7 @@ def analytics_overview(
 @router.get("/projects/{project_slug}/sessions")
 def list_sessions(
     project_slug: str,
+    user: AuthenticatedUser,
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     offset: Annotated[int, Query(ge=0)] = 0,
     status: str | None = None,
@@ -1014,7 +1099,7 @@ def list_sessions(
     ] = "started_at_desc",
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
     conditions = [VoiceSession.project_id == project.id]
     if status:
         conditions.append(VoiceSession.status == status)
@@ -1135,11 +1220,12 @@ def list_sessions(
 def get_session_trace(
     project_slug: str,
     session_id: UUID,
+    user: AuthenticatedUser,
     db: Session = Depends(get_db),
     event_limit: Annotated[int, Query(ge=1, le=500)] = 250,
     event_offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict[str, Any]:
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
     session = db.scalar(
         select(VoiceSession).where(
             VoiceSession.project_id == project.id, VoiceSession.id == session_id
@@ -1429,13 +1515,42 @@ def get_session_trace(
     }
 
 
+@router.get("/projects/{project_slug}/sessions/{session_id}/live")
+async def stream_dashboard_session_events(
+    project_slug: str,
+    session_id: UUID,
+    user: AuthenticatedUser,
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Stream trace updates using the signed-in dashboard session, never an ingest key."""
+
+    project = project_for_slug(db, project_slug, user)
+    external_session_id = db.scalar(
+        select(VoiceSession.external_session_id).where(
+            VoiceSession.project_id == project.id,
+            VoiceSession.id == session_id,
+        )
+    )
+    if external_session_id is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    async def event_stream() -> AsyncIterator[str]:
+        async for payload in broker.subscribe(external_session_id):
+            yield f"event: trace\ndata: {payload}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @router.post("/projects/{project_slug}/sessions/{session_id}/analysis")
 def request_reanalysis(
-    project_slug: str, session_id: UUID, db: Session = Depends(get_db)
+    project_slug: str,
+    session_id: UUID,
+    user: AuthenticatedUser,
+    db: Session = Depends(get_db),
 ) -> dict[str, str]:
     """Queue a new deterministic and semantic pass without mutating prior analysis runs."""
 
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
     session = db.scalar(
         select(VoiceSession).where(
             VoiceSession.project_id == project.id, VoiceSession.id == session_id
@@ -1479,12 +1594,13 @@ def request_reanalysis(
 def attach_recording_metadata(
     project_slug: str,
     session_id: UUID,
+    user: AuthenticatedUser,
     payload: dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
 ) -> dict[str, str | None]:
     """Attach optional external/private recording metadata without copying audio."""
 
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
     session = db.scalar(
         select(VoiceSession).where(
             VoiceSession.project_id == project.id, VoiceSession.id == session_id
@@ -1547,11 +1663,12 @@ def delete_recording_metadata(
     project_slug: str,
     session_id: UUID,
     recording_id: UUID,
+    user: AuthenticatedUser,
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     """Revoke optional recording access without deleting canonical trace data."""
 
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
     recording = db.scalar(
         select(Recording)
         .join(VoiceSession, Recording.session_id == VoiceSession.id)
@@ -1577,11 +1694,12 @@ def redirect_to_recording_playback(
     project_slug: str,
     session_id: UUID,
     recording_id: UUID,
+    user: AuthenticatedUser,
     db: Session = Depends(get_db),
 ) -> RedirectResponse | FileResponse:
     """Issue playback through a short-lived signed URL; audio never transits this API."""
 
-    project = project_for_slug(db, project_slug)
+    project = project_for_slug(db, project_slug, user)
     recording = db.scalar(
         select(Recording)
         .join(VoiceSession, Recording.session_id == VoiceSession.id)

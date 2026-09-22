@@ -6,10 +6,11 @@ download URL only after the trace-scoped recording lookup has succeeded.
 
 from datetime import UTC, datetime, timedelta
 from time import time
+from typing import cast
 from urllib.parse import urlparse
 
-import cloudinary
-from cloudinary.utils import private_download_url
+import cloudinary  # type: ignore[import-untyped]
+from cloudinary.utils import private_download_url  # type: ignore[import-untyped]
 
 from voker_voice_api.config import Settings
 from voker_voice_api.models import Recording
@@ -80,10 +81,13 @@ def cloudinary_playback_url(recording: Recording, settings: Settings) -> str:
         secure=True,
     )
     media_format = "mp3" if recording.media_type == "audio/mpeg" else "wav"
-    return private_download_url(
-        recording.asset_reference,
-        media_format,
-        resource_type="video",  # Cloudinary stores audio under the video resource type.
-        type="authenticated",
-        expires_at=int(time()) + PLAYBACK_URL_TTL_SECONDS,
+    return cast(
+        str,
+        private_download_url(
+            recording.asset_reference,
+            media_format,
+            resource_type="video",  # Cloudinary stores audio under the video resource type.
+            type="authenticated",
+            expires_at=int(time()) + PLAYBACK_URL_TTL_SECONDS,
+        ),
     )

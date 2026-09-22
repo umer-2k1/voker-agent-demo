@@ -1,8 +1,8 @@
 """Google-authenticated dashboard session endpoints."""
 
-from typing import Any
+from typing import Any, cast
 
-from authlib.integrations.starlette_client import OAuth
+from authlib.integrations.starlette_client import OAuth  # type: ignore[import-untyped]
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -33,7 +33,10 @@ def google_oauth() -> OAuth:
 @router.get("/google/login")
 async def google_login(request: Request) -> RedirectResponse:
     callback = request.url_for("google_callback")
-    return await google_oauth().google.authorize_redirect(request, callback)
+    return cast(
+        RedirectResponse,
+        await google_oauth().google.authorize_redirect(request, callback),
+    )
 
 
 @router.get("/google/callback", name="google_callback")

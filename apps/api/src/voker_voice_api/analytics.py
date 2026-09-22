@@ -12,6 +12,7 @@ class CohortValue:
     outcome: str | None
     interruption_count: int
     stt_duration_ms: float | None
+    dead_air_count: int = 0
 
 
 def resolution_rate(values: Iterable[CohortValue]) -> dict[str, int | float] | None:
@@ -45,6 +46,8 @@ def voice_impact_cohorts(values: Iterable[CohortValue]) -> dict[str, dict[str, i
             for value in rows
             if value.stt_duration_ms is not None and value.stt_duration_ms <= 500
         ),
+        "dead_air": resolution_rate(value for value in rows if value.dead_air_count >= 1),
+        "no_dead_air": resolution_rate(value for value in rows if value.dead_air_count == 0),
     }
 
 

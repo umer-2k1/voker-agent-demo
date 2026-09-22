@@ -417,11 +417,11 @@ function TracePanelContent({
           : null;
     if (!targetId) return;
     requestAnimationFrame(() => {
-      requestAnimationFrame(() =>
-        document
-          .getElementById(targetId)
-          ?.scrollIntoView({ behavior: "smooth", block: "center" }),
-      );
+      requestAnimationFrame(() => {
+        const targetElement = document.getElementById(targetId);
+        if (typeof targetElement?.scrollIntoView === "function")
+          targetElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
     });
   }
 

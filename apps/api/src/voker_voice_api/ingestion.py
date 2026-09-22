@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from voker_voice_api.config import get_settings
 from voker_voice_api.costs import estimate_llm_cost_micros
 from voker_voice_api.models import (
     Agent,
@@ -26,6 +27,7 @@ from voker_voice_api.models import (
 from voker_voice_api.models import (
     Session as VoiceSession,
 )
+from voker_voice_api.recordings import recording_expiry, validate_recording_metadata
 from voker_voice_api.schemas import BatchItemResult, CanonicalEvent, EventBatchResponse
 
 TERMINAL_STATUSES = {"ok", "error", "cancelled", "timeout"}
@@ -492,6 +494,7 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
                 model=event.usage.model,
                 input_tokens=event.usage.input_tokens,
                 output_tokens=event.usage.output_tokens,
+                cached_tokens=event.usage.cached_tokens,
             )
         )
         if estimate is not None:
@@ -520,19 +523,27 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
     if event.event_type == "recording.available":
         asset_reference = event.attributes.get("recording_url")
         external_id = event.attributes.get("recording_external_id")
+        source = event.source.provider or event.source.integration or "external"
+        if source not in {"cloudinary", "vapi", "retell", "external", "local"}:
+            source = "external"
         existing_recording = db.scalar(
             select(Recording).where(
                 Recording.session_id == session.id,
-                Recording.source
-                == (event.source.provider or event.source.integration or "provider"),
+                Recording.source == source,
                 Recording.external_id == (external_id if isinstance(external_id, str) else None),
             )
+        )
+        status_value = "available" if isinstance(asset_reference, str) else "unavailable"
+        validate_recording_metadata(
+            source=source,
+            status=status_value,
+            asset_reference=asset_reference if isinstance(asset_reference, str) else None,
         )
         if existing_recording is None:
             db.add(
                 Recording(
                     session_id=session.id,
-                    source=event.source.provider or event.source.integration or "provider",
+                    source=source,
                     external_id=external_id if isinstance(external_id, str) else None,
                     asset_reference=asset_reference if isinstance(asset_reference, str) else None,
                     duration_ms=(
@@ -543,7 +554,8 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
                         if event.attributes.get("media_type")
                         else None
                     ),
-                    status="available" if isinstance(asset_reference, str) else "unavailable",
+                    status=status_value,
+                    expires_at=recording_expiry(None, get_settings()),
                 )
             )
         else:

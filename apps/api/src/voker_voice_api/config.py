@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     google_client_secret: str | None = None
     session_secret: str | None = None
     credential_encryption_key: str | None = None
+    recording_retention_days: int = 30
     # Keep the dashboard host aligned with the local API host.  `localhost`
     # and `127.0.0.1` are distinct browser sites, so mixing them prevents the
     # browser from sending the signed session cookie to `/auth/me`.

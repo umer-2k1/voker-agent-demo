@@ -325,12 +325,8 @@ def normalize_vapi(
     events: list[dict[str, Any]] = []
 
     call_status = str(message.get("status") or call.get("status") or "").lower()
-    if (
-        event_name == "status-update"
-        and call_status in {"in-progress", "active", "ringing"}
-    ) or (
-        (event_name == "end-of-call-report" or call_status == "ended")
-        and started_at is not None
+    if (event_name == "status-update" and call_status in {"in-progress", "active", "ringing"}) or (
+        (event_name == "end-of-call-report" or call_status == "ended") and started_at is not None
     ):
         events.append(
             _base_event(
@@ -503,8 +499,7 @@ def normalize_retell(
         successful = analysis.get("call_successful")
         reason = call.get("disconnection_reason")
         failed = event_name == "call_error" or (
-            isinstance(reason, str)
-            and any(word in reason.lower() for word in ("error", "failed"))
+            isinstance(reason, str) and any(word in reason.lower() for word in ("error", "failed"))
         )
         attributes: dict[str, Any] = {
             "provider_delivery_id": delivery_id,

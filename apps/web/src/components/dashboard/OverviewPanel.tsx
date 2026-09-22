@@ -1,6 +1,9 @@
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
 import type { Analytics, Overview } from "@/components/dashboard/types";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Link } from "react-router-dom";
 
 function formatLatency(value: number | null) {
@@ -19,16 +22,43 @@ function displayRate(value: number | null | undefined) {
   return value === null || value === undefined ? "—" : formatRate(value);
 }
 
+function formatCost(value: number | null | undefined) {
+  return value === null || value === undefined
+    ? "Unknown"
+    : new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 6,
+      }).format(value / 1_000_000);
+}
+
 export function OverviewPanel({
   overview,
   analytics,
   findingsCount,
   loading,
+  environments,
+  environmentFilter,
+  startedAfter,
+  startedBefore,
+  onEnvironmentChange,
+  onStartedAfterChange,
+  onStartedBeforeChange,
+  onClearFilters,
 }: {
   overview: Overview | null;
   analytics: Analytics | null;
   findingsCount: number;
   loading: boolean;
+  environments: Array<{ name: string; slug: string }>;
+  environmentFilter: string;
+  startedAfter: string;
+  startedBefore: string;
+  onEnvironmentChange(value: string): void;
+  onStartedAfterChange(value: string): void;
+  onStartedBeforeChange(value: string): void;
+  onClearFilters(): void;
 }) {
   if (loading)
     return (
@@ -43,6 +73,53 @@ export function OverviewPanel({
     );
   return (
     <>
+      <section
+        className="mb-5 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end"
+        aria-label="Analytics filters"
+      >
+        <label className="grid gap-1.5 text-xs font-semibold text-slate-600">
+          Environment
+          <NativeSelect
+            value={environmentFilter}
+            onChange={(event) => onEnvironmentChange(event.target.value)}
+          >
+            <option value="">All environments</option>
+            {environments.map((item) => (
+              <option value={item.slug} key={item.slug}>
+                {item.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
+        <label className="grid gap-1.5 text-xs font-semibold text-slate-600">
+          Started after
+          <Input
+            type="date"
+            value={startedAfter}
+            onChange={(event) => onStartedAfterChange(event.target.value)}
+          />
+        </label>
+        <label className="grid gap-1.5 text-xs font-semibold text-slate-600">
+          Started before
+          <Input
+            type="date"
+            value={startedBefore}
+            onChange={(event) => onStartedBeforeChange(event.target.value)}
+          />
+        </label>
+        <Button
+          variant="outline"
+          disabled={!environmentFilter && !startedAfter && !startedBefore}
+          onClick={onClearFilters}
+        >
+          Clear filters
+        </Button>
+        <p className="text-xs text-slate-500 md:col-span-4">
+          Showing {analytics?.session_count ?? 0} sessions. Missing outcomes,
+          latency, usage, and cost remain unknown rather than being counted as
+          zero.
+        </p>
+      </section>
       <section
         className="operations-brief"
         aria-label="Conversation outcome summary"
@@ -109,6 +186,50 @@ export function OverviewPanel({
         <OutcomeChart outcomes={analytics?.outcomes ?? null} />
       </section>
       <section
+        className="grid gap-3 md:grid-cols-4"
+        aria-label="Cost, usage, and outcome provenance"
+      >
+        <Card className="cohort-card">
+          <p>Tracked cost</p>
+          <strong>{formatCost(analytics?.cost.amount_micros)}</strong>
+          <span>
+            {formatCost(analytics?.cost.exact_amount_micros)} exact ·{" "}
+            {formatCost(analytics?.cost.estimated_amount_micros)} estimated
+          </span>
+        </Card>
+        <Card className="cohort-card">
+          <p>Voice usage</p>
+          <strong>
+            {analytics?.usage.audio_seconds == null
+              ? "Unknown"
+              : `${analytics.usage.audio_seconds.toFixed(1)} seconds`}
+          </strong>
+          <span>
+            {analytics?.usage.tts_characters == null
+              ? "TTS units unknown"
+              : `${analytics.usage.tts_characters.toLocaleString()} TTS characters`}
+          </span>
+        </Card>
+        <Card className="cohort-card">
+          <p>Outcome provenance</p>
+          <strong>{analytics?.outcome_sources.explicit ?? 0} explicit</strong>
+          <span>
+            {analytics?.outcome_sources.inferred ?? 0} inferred ·{" "}
+            {analytics?.outcome_sources.unknown ?? 0} unknown
+          </span>
+        </Card>
+        <Card className="cohort-card">
+          <p>Voice behavior</p>
+          <strong>
+            {analytics?.voice_behavior.interruption_sessions ?? 0} interrupted
+          </strong>
+          <span>
+            {analytics?.voice_behavior.dead_air_sessions ?? 0} dead-air ·{" "}
+            {analytics?.voice_behavior.talk_over_sessions ?? 0} talk-over
+          </span>
+        </Card>
+      </section>
+      <section
         className="analytics-grid"
         aria-label="Recurring findings and comparisons"
       >
@@ -170,16 +291,23 @@ export function OverviewPanel({
           <h2>Agent and provider comparison</h2>
           <div className="mt-4 grid gap-3">
             {[
-              ...(analytics?.comparisons?.agents ?? []),
-              ...(analytics?.comparisons?.providers ?? []),
+              ["Agent", analytics?.comparisons?.agents ?? []] as const,
+              ["Version", analytics?.comparisons?.versions ?? []] as const,
+              ["Platform", analytics?.comparisons?.platforms ?? []] as const,
+              ["Provider", analytics?.comparisons?.providers ?? []] as const,
+              ["Model", analytics?.comparisons?.models ?? []] as const,
             ]
-              .slice(0, 8)
+              .flatMap(([group, items]) =>
+                items.map((item) => ({ ...item, group })),
+              )
+              .slice(0, 10)
               .map((item) => (
                 <div
                   className="grid grid-cols-[minmax(0,1fr)_auto] gap-3"
-                  key={item.label}
+                  key={`${item.group}-${item.label}`}
                 >
                   <span className="truncate text-sm text-slate-700">
+                    <small className="mr-1 text-slate-400">{item.group}</small>
                     {item.label}
                   </span>
                   <b className="text-sm tabular-nums text-slate-900">
@@ -189,7 +317,10 @@ export function OverviewPanel({
               ))}
             {!(
               analytics?.comparisons?.agents?.length ||
-              analytics?.comparisons?.providers?.length
+              analytics?.comparisons?.versions?.length ||
+              analytics?.comparisons?.platforms?.length ||
+              analytics?.comparisons?.providers?.length ||
+              analytics?.comparisons?.models?.length
             ) ? (
               <p className="empty-state">
                 Comparisons appear when agent versions or provider models report
@@ -203,6 +334,14 @@ export function OverviewPanel({
         <CohortCard
           label="High interruptions"
           cohort={analytics?.voice_impact_cohorts.high_interruption ?? null}
+        />
+        <CohortCard
+          label="Observed dead air"
+          cohort={analytics?.voice_impact_cohorts.dead_air ?? null}
+        />
+        <CohortCard
+          label="No dead air"
+          cohort={analytics?.voice_impact_cohorts.no_dead_air ?? null}
         />
         <CohortCard
           label="Normal interruptions"
@@ -226,7 +365,11 @@ function CohortCard({
   cohort,
 }: {
   label: string;
-  cohort: { sample_size: number; resolution_rate: number } | null;
+  cohort: {
+    sample_size: number;
+    resolution_rate: number;
+    session_ids?: string[];
+  } | null;
 }) {
   return (
     <Card className="cohort-card">
@@ -234,7 +377,16 @@ function CohortCard({
       {cohort ? (
         <>
           <strong>{formatRate(cohort.resolution_rate)} resolved</strong>
-          <span>{cohort.sample_size} observed sessions</span>
+          {cohort.session_ids?.[0] ? (
+            <Link
+              className="text-xs font-semibold text-emerald-800 underline-offset-4 hover:underline"
+              to={`/sessions/${cohort.session_ids[0]}`}
+            >
+              {cohort.sample_size} observed sessions
+            </Link>
+          ) : (
+            <span>{cohort.sample_size} observed sessions</span>
+          )}
         </>
       ) : (
         <>

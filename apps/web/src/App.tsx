@@ -20,6 +20,7 @@ import { TracePanel } from "@/components/dashboard/TracePanel";
 import type {
   Analytics,
   Overview,
+  ProjectSetup,
   SessionPage,
   Trace,
   VoiceSession,
@@ -104,12 +105,35 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
     queryFn: () =>
       dashboardRequest<Overview>(`/api/projects/${projectSlug}/overview`),
   });
-  const analyticsQuery = useQuery({
-    queryKey: ["analytics", projectSlug],
+  const setupQuery = useQuery({
+    queryKey: ["project-setup", projectSlug],
     queryFn: () =>
-      dashboardRequest<Analytics>(
-        `/api/projects/${projectSlug}/analytics/overview`,
-      ),
+      dashboardRequest<ProjectSetup>(`/api/projects/${projectSlug}/setup`),
+    enabled: !sessionsOnly,
+  });
+  const analyticsQuery = useQuery({
+    queryKey: [
+      "analytics",
+      projectSlug,
+      environmentFilter,
+      startedAfter,
+      startedBefore,
+    ],
+    queryFn: () => {
+      const query = new URLSearchParams();
+      if (environmentFilter) query.set("environment", environmentFilter);
+      if (startedAfter)
+        query.set("started_after", new Date(startedAfter).toISOString());
+      if (startedBefore)
+        query.set(
+          "started_before",
+          new Date(`${startedBefore}T23:59:59`).toISOString(),
+        );
+      return dashboardRequest<Analytics>(
+        `/api/projects/${projectSlug}/analytics/overview${query.size ? `?${query}` : ""}`,
+      );
+    },
+    placeholderData: (previousData) => previousData,
   });
   const sessionsQuery = useQuery({
     queryKey: [
@@ -303,6 +327,32 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
             analytics={analytics}
             findingsCount={trace?.findings.length ?? 0}
             loading={overviewQuery.isPending || analyticsQuery.isPending}
+            environments={setupQuery.data?.environments ?? []}
+            environmentFilter={environmentFilter}
+            startedAfter={startedAfter}
+            startedBefore={startedBefore}
+            onEnvironmentChange={(value) => {
+              setEnvironmentFilter(value);
+              syncFilterUrl({ environment: value });
+            }}
+            onStartedAfterChange={(value) => {
+              setStartedAfter(value);
+              syncFilterUrl({ started_after: value });
+            }}
+            onStartedBeforeChange={(value) => {
+              setStartedBefore(value);
+              syncFilterUrl({ started_before: value });
+            }}
+            onClearFilters={() => {
+              setEnvironmentFilter("");
+              setStartedAfter("");
+              setStartedBefore("");
+              syncFilterUrl({
+                environment: "",
+                started_after: "",
+                started_before: "",
+              });
+            }}
           />
         ) : null}
         {sessionsOnly ? (

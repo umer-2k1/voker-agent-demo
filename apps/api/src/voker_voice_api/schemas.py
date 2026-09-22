@@ -128,7 +128,9 @@ class RecordingCreateRequest(BaseModel):
     asset_reference: str | None = Field(default=None, max_length=2048)
     duration_ms: int | None = Field(default=None, ge=0)
     media_type: str | None = Field(default=None, max_length=128)
-    status: Literal["available", "processing", "unavailable"] = "available"
+    status: Literal["available", "processing", "unavailable", "deleted", "expired", "denied"] = (
+        "available"
+    )
     expires_at: datetime | None = None
 
 

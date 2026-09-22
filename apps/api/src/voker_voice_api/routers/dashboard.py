@@ -7,10 +7,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, RedirectResponse
-from sqlalchemy import exists, func, select
+from sqlalchemy import case, exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from voker_voice_api.analytics import CohortValue, latency_distribution, voice_impact_cohorts
+from voker_voice_api.analytics import latency_distribution
 from voker_voice_api.bootstrap import create_ingest_key
 from voker_voice_api.config import REPOSITORY_ROOT, get_settings
 from voker_voice_api.connectors import (
@@ -44,7 +44,12 @@ from voker_voice_api.models import (
 from voker_voice_api.models import (
     Session as VoiceSession,
 )
-from voker_voice_api.recordings import cloudinary_playback_url
+from voker_voice_api.recordings import (
+    cloudinary_playback_url,
+    external_playback_url,
+    recording_expiry,
+    validate_recording_metadata,
+)
 from voker_voice_api.routers.account import require_dashboard_user
 from voker_voice_api.security import (
     decrypt_connector_secrets,
@@ -536,229 +541,452 @@ def update_project_settings(
 
 
 @router.get("/projects/{project_slug}/analytics/overview")
-def analytics_overview(project_slug: str, db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Bounded project aggregates that retain unknown costs/metrics as unknown."""
+def analytics_overview(
+    project_slug: str,
+    environment: str | None = None,
+    started_after: datetime | None = None,
+    started_before: datetime | None = None,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Database-bounded aggregates that retain unobserved values as unknown."""
 
     project = project_for_slug(db, project_slug)
-    sessions = list(db.scalars(select(VoiceSession).where(VoiceSession.project_id == project.id)))
-    completed = [item for item in sessions if item.status == "completed"]
-    outcome_counts: dict[str, int] = {}
-    source_counts: dict[str, int] = {}
-    for item in sessions:
-        source_counts[item.source] = source_counts.get(item.source, 0) + 1
-        if item.outcome:
-            outcome_counts[item.outcome] = outcome_counts.get(item.outcome, 0) + 1
-    costs = list(
-        db.scalars(
-            select(CostRecord)
-            .join(VoiceSession, CostRecord.session_id == VoiceSession.id)
-            .where(VoiceSession.project_id == project.id)
-        )
-    )
-    events_by_session: dict[object, list[Event]] = {item.id: [] for item in sessions}
-    if sessions:
-        events = db.scalars(select(Event).where(Event.session_id.in_(events_by_session))).all()
-        for event in events:
-            events_by_session[event.session_id].append(event)
-    cohort_values = []
-    for item in sessions:
-        events = events_by_session[item.id]
-        stt_durations = [
-            float(event.duration_ms)
-            for event in events
-            if event.event_type == "stt.completed" and event.duration_ms is not None
-        ]
-        cohort_values.append(
-            CohortValue(
-                key=str(item.id),
-                outcome=item.outcome,
-                interruption_count=sum(
-                    event.event_type == "voice.interruption" for event in events
-                ),
-                stt_duration_ms=max(stt_durations) if stt_durations else None,
+    conditions = [VoiceSession.project_id == project.id]
+    if environment:
+        conditions.append(
+            VoiceSession.environment_id.in_(
+                select(Environment.id).where(
+                    Environment.project_id == project.id,
+                    Environment.slug == environment,
+                )
             )
         )
-    spans_by_kind: dict[str, list[float]] = {"stt": [], "llm": [], "tool": [], "tts": []}
-    tool_failure_sessions: set[UUID] = set()
-    if sessions:
-        spans = db.scalars(
-            select(Span).where(Span.session_id.in_(events_by_session)).limit(5000)
-        ).all()
-        for span in spans:
-            if span.kind in spans_by_kind and span.duration_ms is not None:
-                spans_by_kind[span.kind].append(float(span.duration_ms))
-            if span.kind in {"tool", "mcp"} and span.status in {
-                "error",
-                "failed",
-                "timeout",
-                "cancelled",
-            }:
-                tool_failure_sessions.add(span.session_id)
-    correction_sessions = {
-        event.session_id
-        for events in events_by_session.values()
-        for event in events
-        if event.event_type.startswith("correction.")
+    if started_after:
+        conditions.append(VoiceSession.started_at >= started_after)
+    if started_before:
+        conditions.append(VoiceSession.started_at <= started_before)
+
+    filtered = (
+        select(
+            VoiceSession.id.label("id"),
+            VoiceSession.status.label("status"),
+            VoiceSession.outcome.label("outcome"),
+            VoiceSession.outcome_source.label("outcome_source"),
+            VoiceSession.source.label("source"),
+            VoiceSession.agent_id.label("agent_id"),
+            VoiceSession.agent_version_id.label("agent_version_id"),
+        )
+        .where(*conditions)
+        .subquery("filtered_sessions")
+    )
+    resolved_values = ("success", "resolved")
+    terminal = db.execute(
+        select(
+            func.count().label("sessions"),
+            func.sum(case((filtered.c.status == "completed", 1), else_=0)).label("completed"),
+            func.sum(case((filtered.c.outcome.is_not(None), 1), else_=0)).label("known_outcomes"),
+            func.sum(case((filtered.c.outcome.in_(resolved_values), 1), else_=0)).label("resolved"),
+            func.sum(case((filtered.c.outcome == "escalated", 1), else_=0)).label("escalated"),
+            func.sum(case((filtered.c.outcome == "abandoned", 1), else_=0)).label("abandoned"),
+        ).select_from(filtered)
+    ).one()
+    session_count = int(terminal.sessions or 0)
+    completed_count = int(terminal.completed or 0)
+    known_outcome_count = int(terminal.known_outcomes or 0)
+
+    outcome_counts = {
+        str(label): int(count)
+        for label, count in db.execute(
+            select(filtered.c.outcome, func.count())
+            .where(filtered.c.outcome.is_not(None))
+            .group_by(filtered.c.outcome)
+        )
     }
-    abandonment_sessions = {
-        event.session_id
-        for events in events_by_session.values()
-        for event in events
-        if event.event_type.startswith("abandonment.")
+    source_counts = {
+        str(label): int(count)
+        for label, count in db.execute(
+            select(filtered.c.source, func.count()).group_by(filtered.c.source)
+        )
     }
-    error_sessions = set(
-        db.scalars(
-            select(Error.session_id)
-            .join(VoiceSession, Error.session_id == VoiceSession.id)
-            .where(VoiceSession.project_id == project.id)
+
+    cost_row = db.execute(
+        select(
+            func.count(CostRecord.id).label("records"),
+            func.sum(CostRecord.amount_micros).label("amount"),
+            func.sum(
+                case((CostRecord.is_estimate.is_(True), CostRecord.amount_micros), else_=0)
+            ).label("estimated_amount"),
+            func.sum(
+                case((CostRecord.is_estimate.is_(False), CostRecord.amount_micros), else_=0)
+            ).label("exact_amount"),
+            func.sum(case((CostRecord.is_estimate.is_(True), 1), else_=0)).label(
+                "estimated_records"
+            ),
+            func.sum(case((CostRecord.is_estimate.is_(False), 1), else_=0)).label("exact_records"),
+        )
+        .select_from(CostRecord)
+        .join(filtered, CostRecord.session_id == filtered.c.id)
+    ).one()
+    usage_row = db.execute(
+        select(
+            func.sum(UsageRecord.input_tokens).label("input_tokens"),
+            func.sum(UsageRecord.output_tokens).label("output_tokens"),
+            func.sum(UsageRecord.total_tokens).label("total_tokens"),
+            func.sum(UsageRecord.audio_seconds).label("audio_seconds"),
+            func.sum(UsageRecord.tts_characters).label("tts_characters"),
+        )
+        .select_from(UsageRecord)
+        .join(filtered, UsageRecord.session_id == filtered.c.id)
+    ).one()
+
+    def distinct_count_and_links(
+        entity: type[Event] | type[Span] | type[Error], predicate: Any
+    ) -> tuple[int, list[str]]:
+        query = (
+            select(entity.session_id)
+            .join(filtered, entity.session_id == filtered.c.id)
+            .where(predicate)
             .distinct()
         )
+        count = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+        links = [str(item) for item in db.scalars(query.limit(10))]
+        return int(count), links
+
+    correction_count, correction_links = distinct_count_and_links(
+        Event, Event.event_type.startswith("correction.")
     )
-    failure_categories: dict[str, int] = {}
-    failure_category_sessions: dict[str, set[UUID]] = {}
-    findings = db.scalars(
-        select(Finding)
-        .join(VoiceSession, Finding.session_id == VoiceSession.id)
-        .where(VoiceSession.project_id == project.id)
-        .limit(1000)
-    ).all()
-    for finding in findings:
-        category = finding.attributes.get("failure_category") or finding.type
-        if isinstance(category, str):
-            failure_categories[category] = failure_categories.get(category, 0) + 1
-            failure_category_sessions.setdefault(category, set()).add(finding.session_id)
-
-    known_outcomes = [item for item in sessions if item.outcome]
-    resolved_sessions = {item.id for item in sessions if item.outcome == "success"}
-    escalated_sessions = {item.id for item in sessions if item.outcome == "escalated"}
-    abandoned_sessions = {
-        item.id for item in sessions if item.outcome == "abandoned"
-    } | abandonment_sessions
-    agent_comparison: dict[str, dict[str, Any]] = {}
-    for item in sessions:
-        agent = db.get(Agent, item.agent_id) if item.agent_id else None
-        version = db.get(AgentVersion, item.agent_version_id) if item.agent_version_id else None
-        label = " · ".join(
-            value
-            for value in (
-                agent.slug if agent else "Unknown agent",
-                version.version if version else None,
+    interruption_count, interruption_links = distinct_count_and_links(
+        Event, Event.event_type == "voice.interruption"
+    )
+    dead_air_count, dead_air_links = distinct_count_and_links(
+        Event, Event.event_type.in_(("voice.dead_air", "voice.dead-air"))
+    )
+    talk_over_count, talk_over_links = distinct_count_and_links(
+        Event, Event.event_type.in_(("voice.talk_over", "voice.talk-over"))
+    )
+    error_count, error_links = distinct_count_and_links(Error, Error.id.is_not(None))
+    tool_failure_count, tool_failure_links = distinct_count_and_links(
+        Span,
+        Span.kind.in_(("tool", "mcp"))
+        & Span.status.in_(("error", "failed", "timeout", "cancelled")),
+    )
+    abandoned_query = (
+        select(filtered.c.id)
+        .select_from(filtered)
+        .outerjoin(Event, Event.session_id == filtered.c.id)
+        .where(
+            or_(
+                filtered.c.outcome == "abandoned",
+                Event.event_type.startswith("abandonment."),
             )
-            if value
         )
-        group = agent_comparison.setdefault(label, {"sessions": 0, "resolved": 0})
-        group["sessions"] += 1
-        group["resolved"] += item.outcome == "success"
-    provider_comparison: dict[str, dict[str, Any]] = {}
-    usage_rows = db.scalars(
-        select(UsageRecord)
-        .join(VoiceSession, UsageRecord.session_id == VoiceSession.id)
-        .where(VoiceSession.project_id == project.id)
-        .limit(5000)
+        .distinct()
+    )
+    abandoned_total = int(
+        db.scalar(select(func.count()).select_from(abandoned_query.subquery())) or 0
+    )
+    abandonment_links = [str(item) for item in db.scalars(abandoned_query.limit(10))]
+
+    event_metrics = (
+        select(
+            Event.session_id.label("session_id"),
+            func.sum(case((Event.event_type == "voice.interruption", 1), else_=0)).label(
+                "interruptions"
+            ),
+            func.sum(
+                case(
+                    (Event.event_type.in_(("voice.dead_air", "voice.dead-air")), 1),
+                    else_=0,
+                )
+            ).label("dead_air"),
+            func.max(
+                case((Event.event_type == "stt.completed", Event.duration_ms), else_=None)
+            ).label("stt_duration_ms"),
+        )
+        .join(filtered, Event.session_id == filtered.c.id)
+        .group_by(Event.session_id)
+        .subquery("event_metrics")
+    )
+    cohort_rows = (
+        select(
+            filtered.c.id.label("id"),
+            filtered.c.outcome.label("outcome"),
+            func.coalesce(event_metrics.c.interruptions, 0).label("interruptions"),
+            func.coalesce(event_metrics.c.dead_air, 0).label("dead_air"),
+            event_metrics.c.stt_duration_ms.label("stt_duration_ms"),
+        )
+        .outerjoin(event_metrics, event_metrics.c.session_id == filtered.c.id)
+        .subquery("cohort_rows")
+    )
+
+    def cohort(predicate: Any) -> dict[str, Any] | None:
+        observed = cohort_rows.c.outcome.is_not(None) & predicate
+        row = db.execute(
+            select(
+                func.count().label("sample_size"),
+                func.sum(case((cohort_rows.c.outcome.in_(resolved_values), 1), else_=0)).label(
+                    "resolved"
+                ),
+            )
+            .select_from(cohort_rows)
+            .where(observed)
+        ).one()
+        sample_size = int(row.sample_size or 0)
+        if sample_size < 5:
+            return None
+        resolved = int(row.resolved or 0)
+        links = [
+            str(item)
+            for item in db.scalars(
+                select(cohort_rows.c.id).where(observed).order_by(cohort_rows.c.id).limit(10)
+            )
+        ]
+        return {
+            "sample_size": sample_size,
+            "resolved": resolved,
+            "resolution_rate": resolved / sample_size,
+            "session_ids": links,
+        }
+
+    voice_cohorts = {
+        "high_interruption": cohort(cohort_rows.c.interruptions >= 3),
+        "normal_interruption": cohort(cohort_rows.c.interruptions <= 1),
+        "slow_stt": cohort(cohort_rows.c.stt_duration_ms > 1200),
+        "fast_stt": cohort(cohort_rows.c.stt_duration_ms <= 500),
+        "dead_air": cohort(cohort_rows.c.dead_air >= 1),
+        "no_dead_air": cohort(cohort_rows.c.dead_air == 0),
+    }
+
+    latency: dict[str, Any] = {}
+    for kind in ("stt", "llm", "tool", "tts", "voice"):
+        values = [
+            float(value)
+            for value in db.scalars(
+                select(Span.duration_ms)
+                .join(filtered, Span.session_id == filtered.c.id)
+                .where(Span.kind == kind, Span.duration_ms.is_not(None))
+                .order_by(Span.duration_ms)
+                .limit(10_000)
+            )
+            if value is not None
+        ]
+        latency[kind] = latency_distribution(values)
+
+    failure_rows = db.execute(
+        select(Finding.type, func.count(Finding.id))
+        .join(filtered, Finding.session_id == filtered.c.id)
+        .group_by(Finding.type)
+        .order_by(func.count(Finding.id).desc())
+        .limit(8)
     ).all()
-    sessions_by_id = {item.id: item for item in sessions}
-    provider_session_keys: set[tuple[str, UUID]] = set()
-    for usage_row in usage_rows:
-        label = " · ".join(
-            value for value in (usage_row.provider or "Unknown provider", usage_row.model) if value
+    failure_categories = {str(category): int(count) for category, count in failure_rows}
+    failure_category_insights = []
+    for category, count in failure_rows:
+        links = [
+            str(item)
+            for item in db.scalars(
+                select(Finding.session_id)
+                .join(filtered, Finding.session_id == filtered.c.id)
+                .where(Finding.type == category)
+                .distinct()
+                .limit(10)
+            )
+        ]
+        failure_category_insights.append(
+            {"category": category, "count": int(count), "session_ids": links}
         )
-        key = (label, usage_row.session_id)
-        if key in provider_session_keys:
-            continue
-        provider_session_keys.add(key)
-        group = provider_comparison.setdefault(label, {"sessions": 0, "resolved": 0})
-        group["sessions"] += 1
-        group["resolved"] += sessions_by_id[usage_row.session_id].outcome == "success"
 
-    def rate(session_ids: set[UUID], denominator: int | None = None) -> float | None:
-        size = denominator if denominator is not None else len(sessions)
-        return len(session_ids) / size if size else None
+    def comparison_rows(statement: Any) -> list[dict[str, Any]]:
+        rows = db.execute(statement).all()
+        return [
+            {
+                "label": str(label),
+                "sessions": int(sessions),
+                "resolved": int(resolved or 0),
+                "resolution_rate": int(resolved or 0) / int(sessions),
+            }
+            for label, sessions, resolved in rows
+            if sessions
+        ]
 
-    def session_links(session_ids: set[UUID]) -> list[str]:
-        return [str(session_id) for session_id in list(session_ids)[:10]]
+    resolved_case = case((filtered.c.outcome.in_(resolved_values), 1), else_=0)
+    agents = comparison_rows(
+        select(
+            func.coalesce(Agent.name, "Unknown agent"),
+            func.count(filtered.c.id),
+            func.sum(resolved_case),
+        )
+        .select_from(filtered)
+        .outerjoin(Agent, Agent.id == filtered.c.agent_id)
+        .group_by(Agent.name)
+        .order_by(func.count(filtered.c.id).desc())
+        .limit(20)
+    )
+    versions = comparison_rows(
+        select(
+            func.coalesce(AgentVersion.version, "Unknown version"),
+            func.count(filtered.c.id),
+            func.sum(resolved_case),
+        )
+        .select_from(filtered)
+        .outerjoin(AgentVersion, AgentVersion.id == filtered.c.agent_version_id)
+        .group_by(AgentVersion.version)
+        .order_by(func.count(filtered.c.id).desc())
+        .limit(20)
+    )
+    platforms = comparison_rows(
+        select(filtered.c.source, func.count(filtered.c.id), func.sum(resolved_case))
+        .select_from(filtered)
+        .group_by(filtered.c.source)
+        .order_by(func.count(filtered.c.id).desc())
+        .limit(20)
+    )
+    usage_sessions = (
+        select(
+            UsageRecord.session_id.label("session_id"),
+            func.coalesce(UsageRecord.provider, "Unknown provider").label("provider"),
+            func.coalesce(UsageRecord.model, "Unknown model").label("model"),
+            filtered.c.outcome.label("outcome"),
+        )
+        .join(filtered, UsageRecord.session_id == filtered.c.id)
+        .distinct()
+        .subquery("usage_sessions")
+    )
+    usage_resolved = case((usage_sessions.c.outcome.in_(resolved_values), 1), else_=0)
+    providers = comparison_rows(
+        select(
+            usage_sessions.c.provider,
+            func.count(),
+            func.sum(usage_resolved),
+        )
+        .select_from(usage_sessions)
+        .group_by(usage_sessions.c.provider)
+        .order_by(func.count().desc())
+        .limit(20)
+    )
+    models = comparison_rows(
+        select(usage_sessions.c.model, func.count(), func.sum(usage_resolved))
+        .select_from(usage_sessions)
+        .group_by(usage_sessions.c.model)
+        .order_by(func.count().desc())
+        .limit(20)
+    )
+
+    outcome_source_rows = {
+        label: int(count)
+        for label, count in db.execute(
+            select(filtered.c.outcome_source, func.count()).group_by(filtered.c.outcome_source)
+        )
+    }
+    explicit_outcomes = sum(outcome_source_rows.get(value, 0) for value in ("explicit", "provider"))
+    inferred_outcomes = sum(
+        outcome_source_rows.get(value, 0) for value in ("semantic", "rule", "inferred")
+    )
+    unknown_outcomes = session_count - explicit_outcomes - inferred_outcomes
+
+    def ratio(numerator: int, denominator: int) -> float | None:
+        return numerator / denominator if denominator else None
 
     return {
-        "session_count": len(sessions),
-        "completed_session_count": len(completed),
+        "filters": {
+            "environment": environment,
+            "started_after": timestamp(started_after),
+            "started_before": timestamp(started_before),
+        },
+        "session_count": session_count,
+        "completed_session_count": completed_count,
         "outcomes": outcome_counts,
         "sources": source_counts,
         "cost": {
-            "amount_micros": sum(item.amount_micros for item in costs) if costs else None,
-            "currency": "USD" if costs else None,
-            "record_count": len(costs),
-            "estimated_record_count": sum(1 for item in costs if item.is_estimate),
+            "amount_micros": int(cost_row.amount) if cost_row.amount is not None else None,
+            "exact_amount_micros": int(cost_row.exact_amount or 0),
+            "estimated_amount_micros": int(cost_row.estimated_amount or 0),
+            "currency": "USD" if cost_row.records else None,
+            "record_count": int(cost_row.records or 0),
+            "estimated_record_count": int(cost_row.estimated_records or 0),
+            "exact_record_count": int(cost_row.exact_records or 0),
         },
-        "voice_impact_cohorts": voice_impact_cohorts(cohort_values),
-        "latency": {kind: latency_distribution(values) for kind, values in spans_by_kind.items()},
+        "usage": {
+            "input_tokens": usage_row.input_tokens,
+            "output_tokens": usage_row.output_tokens,
+            "total_tokens": usage_row.total_tokens,
+            "audio_seconds": json_number(usage_row.audio_seconds),
+            "tts_characters": usage_row.tts_characters,
+        },
+        "voice_impact_cohorts": voice_cohorts,
+        "latency": latency,
+        "latency_sample_limit_per_stage": 10_000,
         "rates": {
-            "resolution": rate(resolved_sessions, len(known_outcomes)),
-            "correction": rate(correction_sessions),
-            "escalation": rate(escalated_sessions),
-            "abandonment": rate(abandoned_sessions),
-            "error": rate(error_sessions),
+            "resolution": ratio(int(terminal.resolved or 0), known_outcome_count),
+            "correction": ratio(correction_count, session_count),
+            "escalation": ratio(int(terminal.escalated or 0), session_count),
+            "abandonment": ratio(abandoned_total, session_count),
+            "error": ratio(error_count, session_count),
         },
-        "failure_categories": dict(
-            sorted(failure_categories.items(), key=lambda item: item[1], reverse=True)[:8]
-        ),
-        "failure_category_insights": [
-            {
-                "category": category,
-                "count": count,
-                "session_ids": session_links(failure_category_sessions[category]),
-            }
-            for category, count in sorted(
-                failure_categories.items(), key=lambda item: item[1], reverse=True
-            )[:8]
-        ],
-        "tool_failure_count": len(tool_failure_sessions),
+        "failure_categories": failure_categories,
+        "failure_category_insights": failure_category_insights,
+        "tool_failure_count": tool_failure_count,
+        "voice_behavior": {
+            "interruption_sessions": interruption_count,
+            "talk_over_sessions": talk_over_count,
+            "dead_air_sessions": dead_air_count,
+            "correction_sessions": correction_count,
+        },
         "insights": [
             {
                 "key": "errors",
                 "label": "Sessions with recorded errors",
-                "count": len(error_sessions),
-                "session_ids": session_links(error_sessions),
+                "count": error_count,
+                "session_ids": error_links,
             },
             {
                 "key": "tool_failures",
                 "label": "Sessions with failed tools",
-                "count": len(tool_failure_sessions),
-                "session_ids": session_links(tool_failure_sessions),
+                "count": tool_failure_count,
+                "session_ids": tool_failure_links,
             },
             {
                 "key": "corrections",
                 "label": "Sessions with observed corrections",
-                "count": len(correction_sessions),
-                "session_ids": session_links(correction_sessions),
+                "count": correction_count,
+                "session_ids": correction_links,
             },
             {
                 "key": "abandonment",
                 "label": "Sessions with observed abandonment",
-                "count": len(abandoned_sessions),
-                "session_ids": session_links(abandoned_sessions),
+                "count": abandoned_total,
+                "session_ids": abandonment_links,
+            },
+            {
+                "key": "interruptions",
+                "label": "Sessions with observed interruptions",
+                "count": interruption_count,
+                "session_ids": interruption_links,
+            },
+            {
+                "key": "dead_air",
+                "label": "Sessions with observed dead air",
+                "count": dead_air_count,
+                "session_ids": dead_air_links,
+            },
+            {
+                "key": "talk_over",
+                "label": "Sessions with observed talk-over",
+                "count": talk_over_count,
+                "session_ids": talk_over_links,
             },
         ],
         "comparisons": {
-            "agents": [
-                {
-                    "label": label,
-                    **values,
-                    "resolution_rate": values["resolved"] / values["sessions"],
-                }
-                for label, values in agent_comparison.items()
-            ],
-            "providers": [
-                {
-                    "label": label,
-                    **values,
-                    "resolution_rate": values["resolved"] / values["sessions"],
-                }
-                for label, values in provider_comparison.items()
-            ],
+            "agents": agents,
+            "versions": versions,
+            "platforms": platforms,
+            "providers": providers,
+            "models": models,
         },
         "outcome_sources": {
-            "explicit": sum(item.outcome_source == "explicit" for item in sessions),
-            "inferred": sum(item.outcome_source == "semantic" for item in sessions),
-            "unknown": sum(not item.outcome_source for item in sessions),
+            "explicit": explicit_outcomes,
+            "inferred": inferred_outcomes,
+            "unknown": unknown_outcomes,
         },
     }
 
@@ -1253,7 +1481,7 @@ def attach_recording_metadata(
     session_id: UUID,
     payload: dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
-) -> dict[str, str]:
+) -> dict[str, str | None]:
     """Attach optional external/private recording metadata without copying audio."""
 
     project = project_for_slug(db, project_slug)
@@ -1274,18 +1502,44 @@ def attach_recording_metadata(
     asset_reference = payload.get("asset_reference")
     media_type = payload.get("media_type")
     recording_status = payload.get("status")
+    status_value = recording_status if isinstance(recording_status, str) else "available"
+    asset_value = asset_reference if isinstance(asset_reference, str) else None
+    try:
+        validate_recording_metadata(
+            source=source,
+            status=status_value,
+            asset_reference=asset_value,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    expires_at = payload.get("expires_at")
+    parsed_expiry: datetime | None = None
+    if isinstance(expires_at, str):
+        try:
+            parsed_expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail="expires_at must be ISO-8601") from error
+    elif isinstance(expires_at, datetime):
+        parsed_expiry = expires_at
     recording = Recording(
         session_id=session.id,
         source=source,
         external_id=external_id if isinstance(external_id, str) else None,
-        asset_reference=asset_reference if isinstance(asset_reference, str) else None,
+        asset_reference=(
+            None if status_value in {"deleted", "expired", "denied", "unavailable"} else asset_value
+        ),
         duration_ms=duration_ms,
         media_type=media_type if isinstance(media_type, str) else None,
-        status=recording_status if isinstance(recording_status, str) else "available",
+        status=status_value,
+        expires_at=recording_expiry(parsed_expiry, get_settings()),
     )
     db.add(recording)
     db.commit()
-    return {"id": str(recording.id), "status": recording.status}
+    return {
+        "id": str(recording.id),
+        "status": recording.status,
+        "expires_at": timestamp(recording.expires_at),
+    }
 
 
 @router.delete("/projects/{project_slug}/sessions/{session_id}/recordings/{recording_id}")
@@ -1339,6 +1593,16 @@ def redirect_to_recording_playback(
     )
     if recording is None:
         raise HTTPException(status_code=404, detail="Recording not found")
+    if recording.expires_at is not None:
+        expiry = (
+            recording.expires_at.replace(tzinfo=UTC)
+            if recording.expires_at.tzinfo is None
+            else recording.expires_at.astimezone(UTC)
+        )
+        if expiry <= datetime.now(UTC):
+            recording.asset_reference = None
+            recording.status = "expired"
+            db.commit()
     if recording.status != "available":
         raise HTTPException(status_code=410, detail="Recording is no longer available")
     # Development seed recordings intentionally use a repository fixture. This
@@ -1351,7 +1615,11 @@ def redirect_to_recording_playback(
             raise HTTPException(status_code=404, detail="Local demo recording was not found")
         return FileResponse(path, media_type=recording.media_type or "audio/mpeg")
     try:
-        url = cloudinary_playback_url(recording, get_settings())
+        url = (
+            external_playback_url(recording)
+            if recording.source in {"vapi", "retell", "external"}
+            else cloudinary_playback_url(recording, get_settings())
+        )
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     return RedirectResponse(url=url, status_code=307)

@@ -32,6 +32,7 @@ from voker_voice_api.models import (
     WebhookReceipt,
 )
 from voker_voice_api.models import Session as VoiceSession
+from voker_voice_api.recordings import recording_expiry, validate_recording_metadata
 from voker_voice_api.schemas import (
     CanonicalEvent,
     EventBatchResponse,
@@ -313,15 +314,27 @@ def create_recording(
     )
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        validate_recording_metadata(
+            source=payload.source,
+            status=payload.status,
+            asset_reference=payload.asset_reference,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     recording = Recording(
         session_id=session.id,
         source=payload.source,
         external_id=payload.external_id,
-        asset_reference=payload.asset_reference,
+        asset_reference=(
+            None
+            if payload.status in {"deleted", "expired", "denied", "unavailable"}
+            else payload.asset_reference
+        ),
         duration_ms=payload.duration_ms,
         media_type=payload.media_type,
         status=payload.status,
-        expires_at=payload.expires_at,
+        expires_at=recording_expiry(payload.expires_at, get_settings()),
     )
     db.add(recording)
     db.commit()

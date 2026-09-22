@@ -9,18 +9,39 @@ export type Overview = {
 };
 
 export type Analytics = {
+  filters: {
+    environment: string | null;
+    started_after: string | null;
+    started_before: string | null;
+  };
   session_count: number;
   completed_session_count: number;
   outcomes: Record<string, number>;
   sources: Record<string, number>;
   cost: {
     amount_micros: number | null;
+    exact_amount_micros: number;
+    estimated_amount_micros: number;
     currency: string | null;
     record_count: number;
+    exact_record_count: number;
+    estimated_record_count: number;
+  };
+  usage: {
+    input_tokens: number | null;
+    output_tokens: number | null;
+    total_tokens: number | null;
+    audio_seconds: number | null;
+    tts_characters: number | null;
   };
   voice_impact_cohorts: Record<
     string,
-    { sample_size: number; resolved: number; resolution_rate: number } | null
+    {
+      sample_size: number;
+      resolved: number;
+      resolution_rate: number;
+      session_ids: string[];
+    } | null
   >;
   latency: Record<
     string,
@@ -42,6 +63,12 @@ export type Analytics = {
     session_ids: string[];
   }>;
   tool_failure_count: number;
+  voice_behavior: {
+    interruption_sessions: number;
+    talk_over_sessions: number;
+    dead_air_sessions: number;
+    correction_sessions: number;
+  };
   insights: Array<{
     key: string;
     label: string;
@@ -49,20 +76,20 @@ export type Analytics = {
     session_ids: string[];
   }>;
   comparisons: {
-    agents: Array<{
-      label: string;
-      sessions: number;
-      resolved: number;
-      resolution_rate: number;
-    }>;
-    providers: Array<{
-      label: string;
-      sessions: number;
-      resolved: number;
-      resolution_rate: number;
-    }>;
+    agents: ComparisonItem[];
+    versions: ComparisonItem[];
+    platforms: ComparisonItem[];
+    providers: ComparisonItem[];
+    models: ComparisonItem[];
   };
   outcome_sources: { explicit: number; inferred: number; unknown: number };
+};
+
+export type ComparisonItem = {
+  label: string;
+  sessions: number;
+  resolved: number;
+  resolution_rate: number;
 };
 
 export type VoiceSession = {

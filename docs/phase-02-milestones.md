@@ -7,7 +7,7 @@ Related delivery record: [`milestones.md`](./milestones.md)
 
 ## Implementation status
 
-Last updated: 2026-09-21
+Last updated: 2026-09-22
 
 | Milestone | Status | Progress | Verified evidence |
 | --- | --- | ---: | --- |
@@ -19,28 +19,29 @@ Last updated: 2026-09-21
 | 2.6 Trace dashboard | Complete | 100% | Nested canonical waterfall, real tab panels, transcript/recording synchronization, evidence and error navigation, certainty-aware findings, analysis states, usage/cost/outcome/voice summaries, advanced server filters, shareable URLs, outcome-led overview, setup paths, and bounded trace queries verified. |
 | 2.7 Vapi | Complete | 100% | Encrypted credential storage, live API validation/resource selection, Voker-agent mapping, authenticated webhook configuration, durable/deduplicated receipts, asynchronous rich canonical normalization, existing-destination forwarding with retry/disable state, dashboard health, and controlled full-call fixtures verified. |
 | 2.8 Retell | Complete | 100% | Shared managed workflow, agent selection/mapping, webhook registration, official raw-body timestamped HMAC verification, durable deferred normalization, partial/later delivery reconciliation, rich canonical call data, shared dashboard health, and controlled full-call fixtures verified. |
-| 2.9 Analytics, costs, recordings | Not started | 0% | — |
+| 2.9 Analytics, costs, recordings | Complete | 100% | Bounded database aggregates, environment/time filters, evidence-linked cohorts, outcome provenance, exact/estimated costs, versioned rate cards, validated recording lifecycle/retention, authenticated playback, controlled reconciliation fixtures, and dashboard filters verified. |
+| Initial-release safeguards | In progress | 0% | Functional organization/project isolation, mutation roles, scoped live streams, and frontend ingest-key removal remain. |
 
-Current Phase 02 completion: **89%**.
+Current Phase 02 completion: **90%** (nine implementation milestones complete; the final
+initial-release safeguard gate remains).
 
-Remaining Phase 02 work: **11%**.
+Remaining Phase 02 work: **10%**.
 
 ### Current checkpoint
 
-- Milestones 2.1 through 2.8 are complete.
+- Milestones 2.1 through 2.9 are complete.
 - LiveKit/provider credentials are not configured in this workspace, so Milestone 2.3 was
   verified with LiveKit's installed public event models and a deterministic full-call flow rather
   than a hosted-provider acceptance call. Hosted acceptance is explicitly outside Phase 02.
 - Vapi and Retell hosted calls were not required for this initial-release phase. Their complete-call,
   duplicate-delivery, later-analysis, missing-data, and forwarding behavior is verified with
   deterministic provider-contract fixtures and mocked official API responses.
-- Continue from Milestone 2.9 analytics, costs, and recordings.
-- The working tree is intentionally uncommitted and also contains pre-existing frontend changes;
-  preserve those changes when work resumes.
+- Continue with the minimum initial-release safeguards and the full Phase 02 quality gate.
 
 ### Current verification state
 
-- API tests: 50 passing, including six managed-connector/provider contract scenarios.
+- API tests: 56 passing, including aggregate reconciliation, cost-rate-card, recording-state, and
+  managed-connector/provider contract scenarios.
 - Shared canonical fixture validation: passing against JSON Schema and Pydantic.
 - Scoped-trace PostgreSQL migration: upgrade, downgrade, and re-upgrade verified on PostgreSQL 16.
 - Python SDK: Ruff, strict MyPy, and focused tests passing.
@@ -55,7 +56,11 @@ Remaining Phase 02 work: **11%**.
 - Managed connectors: encrypted credentials, provider validation and selection, authenticated
   durable receipts, rich canonical normalization, duplicate/later-event handling, forwarding state,
   and setup health UI pass focused and full API suites.
-- Next implementation target: Milestone 2.9 analytics, costs, and recordings.
+- Analytics, costs, and recordings: bounded aggregate queries, shareable environment/time filters,
+  evidence-linked comparisons/cohorts, missing-data-safe latency, exact-versus-estimated cost,
+  usage units, recording validation/expiry, and authenticated playback pass API and web suites.
+- Frontend: 6 tests pass, the production build succeeds, and ESLint reports no errors.
+- Next implementation target: minimum initial-release safeguards.
 
 ## 1. Phase objective
 
@@ -578,33 +583,33 @@ Turn correct individual traces into useful aggregate product insight and optiona
 
 ### Analytics work
 
-- [ ] Move aggregate calculations into bounded database queries.
-- [ ] Add time range and environment filters.
-- [ ] Segment by agent, version, platform, provider, and model.
-- [ ] Calculate resolution, correction, escalation, abandonment, and error rates.
-- [ ] Calculate stage latency and response gap without treating missing data as zero.
-- [ ] Add tool-failure and voice-behavior summaries.
-- [ ] Add interruption, STT, and dead-air cohorts.
-- [ ] Link every cohort to affected and representative sessions.
-- [ ] Distinguish explicit and inferred outcomes.
+- [x] Move aggregate calculations into bounded database queries.
+- [x] Add time range and environment filters.
+- [x] Segment by agent, version, platform, provider, and model.
+- [x] Calculate resolution, correction, escalation, abandonment, and error rates.
+- [x] Calculate stage latency and response gap without treating missing data as zero.
+- [x] Add tool-failure and voice-behavior summaries.
+- [x] Add interruption, STT, and dead-air cohorts.
+- [x] Link every cohort to affected and representative sessions.
+- [x] Distinguish explicit and inferred outcomes.
 
 ### Cost work
 
-- [ ] Add versioned rate cards for the supported development provider/models.
-- [ ] Accept provider-reported exact costs when supplied.
-- [ ] Label exact and estimated values separately.
-- [ ] Retain zero-cost usage records.
-- [ ] Include STT audio and TTS character/audio units when available.
+- [x] Add versioned rate cards for the supported development provider/models.
+- [x] Accept provider-reported exact costs when supplied.
+- [x] Label exact and estimated values separately.
+- [x] Retain zero-cost usage records.
+- [x] Include STT audio and TTS character/audio units when available.
 
 ### Recording work
 
-- [ ] Accept recording metadata from SDK/provider ingestion.
-- [ ] Validate supported recording sources and states.
-- [ ] Set and expose retention/expiry.
-- [ ] Support available, processing, unavailable, deleted, expired, and denied states.
-- [ ] Ensure dashboard playback sends the required authenticated request.
-- [ ] Prevent local/demo assets from appearing playable through a Cloudinary-only route.
-- [ ] Keep recording deletion independent from canonical trace deletion.
+- [x] Accept recording metadata from SDK/provider ingestion.
+- [x] Validate supported recording sources and states.
+- [x] Set and expose retention/expiry.
+- [x] Support available, processing, unavailable, deleted, expired, and denied states.
+- [x] Ensure dashboard playback sends the required authenticated request.
+- [x] Prevent local/demo assets from appearing playable through a Cloudinary-only route.
+- [x] Keep recording deletion independent from canonical trace deletion.
 
 ### Exit criteria
 

@@ -48,7 +48,7 @@
   --border: #dce8e5;
   --input: #c9ded9;
   --ring: #176258;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: "Avenir Next", Avenir, "Segoe UI", ui-sans-serif, sans-serif;
   color: var(--foreground);
   background: var(--background);
   --sidebar: hsl(0 0% 98%);
@@ -1245,7 +1245,7 @@ h2 {
 .finding {
   align-items: baseline;
   background: #fff7e9;
-  border-left: 3px solid #d99221;
+  border: 1px solid #ead7ab;
   color: #5e491f;
   display: flex;
   font-size: 13px;

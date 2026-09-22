@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -75,6 +76,12 @@ class Project(Timestamped, Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    semantic_analysis_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    semantic_content_exclusions: Mapped[list[str]] = mapped_column(
+        JSONValue, default=list, nullable=False
+    )
 
 
 class Environment(Timestamped, Base):
@@ -143,6 +150,9 @@ class Session(Timestamped, Base):
         UniqueConstraint(
             "project_id", "environment_id", "external_session_id", name="uq_session_external"
         ),
+        UniqueConstraint(
+            "project_id", "environment_id", "trace_id", name="uq_session_project_trace"
+        ),
         Index("ix_sessions_project_started", "project_id", "started_at"),
         Index("ix_sessions_agent_started", "agent_id", "started_at"),
         Index("ix_sessions_status_outcome", "status", "outcome"),
@@ -160,7 +170,7 @@ class Session(Timestamped, Base):
         ForeignKey("agent_versions.id", ondelete="SET NULL")
     )
     external_session_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    trace_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    trace_id: Mapped[str] = mapped_column(String(64), nullable=False)
     source: Mapped[str] = mapped_column(String(64), nullable=False, default="custom")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="in_progress")
     outcome: Mapped[str | None] = mapped_column(String(32))
@@ -451,6 +461,11 @@ class AnalysisRun(Base):
     analysis_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     prompt_version: Mapped[str] = mapped_column(String(255), nullable=False)
     model: Mapped[str | None] = mapped_column(String(255))
+    schema_version: Mapped[str] = mapped_column(String(32), nullable=False, default="1")
+    evaluator_latency_ms: Mapped[float | None] = mapped_column(Numeric(14, 3))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    cost_micros: Mapped[int | None] = mapped_column(Integer)
     result: Mapped[dict[str, Any] | None] = mapped_column(JSONValue)
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

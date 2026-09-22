@@ -12,8 +12,7 @@ def test_voice_impact_omits_small_cohorts() -> None:
 
 def test_voice_impact_reports_only_observed_outcomes() -> None:
     values = [
-        CohortValue(str(index), "success" if index < 3 else "failed", 3, 1500)
-        for index in range(5)
+        CohortValue(str(index), "success" if index < 3 else "failed", 3, 1500) for index in range(5)
     ]
     values.append(CohortValue("unknown", None, 3, 1500))
 

@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "event_id": "evt_invalid_error",
+  "event_type": "tool.error",
+  "occurred_at": "2026-09-21T10:00:00Z",
+  "external_session_id": "fixture-call-invalid",
+  "trace_id": "fixture-trace-invalid",
+  "status": "error"
+}

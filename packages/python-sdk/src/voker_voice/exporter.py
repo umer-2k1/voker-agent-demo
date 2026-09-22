@@ -1,6 +1,7 @@
 import gzip
 import json
 import queue
+import random
 import threading
 import time
 from collections.abc import Iterable
@@ -46,7 +47,8 @@ class BackgroundExporter:
         max_queue_size: int = 2_000,
         batch_size: int = 50,
         flush_interval_seconds: float = 0.25,
-        timeout_seconds: float = 10.0,
+        timeout_seconds: float = 2.0,
+        shutdown_timeout_seconds: float = 2.0,
         max_retries: int = 3,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
@@ -56,6 +58,7 @@ class BackgroundExporter:
         self.flush_interval_seconds = flush_interval_seconds
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
+        self.shutdown_timeout_seconds = shutdown_timeout_seconds
         self.transport = transport
         self._queue: queue.Queue[dict[str, Any] | object] = queue.Queue(maxsize=max_queue_size)
         self._thread = threading.Thread(target=self._run, name="voker-voice-exporter", daemon=True)
@@ -83,13 +86,13 @@ class BackgroundExporter:
     def close(self) -> None:
         if self._closed:
             return
-        self.flush()
+        self.flush(timeout=self.shutdown_timeout_seconds)
         self._closed = True
         try:
             self._queue.put_nowait(self._STOP)
         except queue.Full:
             pass
-        self._thread.join(timeout=self.timeout_seconds)
+        self._thread.join(timeout=self.shutdown_timeout_seconds)
 
     def _run(self) -> None:
         batch: list[dict[str, Any]] = []
@@ -147,5 +150,6 @@ class BackgroundExporter:
             except (httpx.HTTPError, OSError):
                 pass
             if attempt < self.max_retries:
-                time.sleep(0.1 * (2**attempt))
+                delay = 0.1 * (2**attempt)
+                time.sleep(delay + random.uniform(0, delay * 0.25))
         self.failed_batches += 1

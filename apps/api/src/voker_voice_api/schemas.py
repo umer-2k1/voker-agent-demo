@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -63,6 +63,7 @@ class CanonicalEvent(BaseModel):
     parent_span_id: str | None = Field(default=None, max_length=64)
     turn_id: str | None = Field(default=None, max_length=64)
     agent_run_id: str | None = Field(default=None, max_length=64)
+    parent_agent_run_id: str | None = Field(default=None, max_length=64)
     agent: AgentIdentity | None = None
     source: SourceIdentity = Field(default_factory=SourceIdentity)
     status: SpanStatus = SpanStatus.UNSET
@@ -77,8 +78,12 @@ class CanonicalEvent(BaseModel):
     def validate_status_and_error(self) -> "CanonicalEvent":
         if self.status == SpanStatus.ERROR and self.error is None:
             raise ValueError("error payload is required when status is error")
-        if self.error is not None and self.status != SpanStatus.ERROR:
-            raise ValueError("status must be error when an error payload is provided")
+        if self.error is not None and self.status not in {
+            SpanStatus.ERROR,
+            SpanStatus.CANCELLED,
+            SpanStatus.TIMEOUT,
+        }:
+            raise ValueError("error payload requires error, cancelled, or timeout status")
         return self
 
 
@@ -106,8 +111,25 @@ class SessionCreateRequest(BaseModel):
 
 class SessionEndRequest(BaseModel):
     ended_at: datetime
-    status: str = Field(default="completed", max_length=32)
+    status: Literal["completed", "failed", "cancelled", "incomplete"] = "completed"
     outcome: str | None = Field(default=None, max_length=32)
+
+
+class SessionUpdateRequest(BaseModel):
+    metadata: dict[str, Any] | None = None
+    outcome: str | None = Field(default=None, max_length=32)
+    outcome_source: str | None = Field(default=None, max_length=32)
+
+
+class RecordingCreateRequest(BaseModel):
+    external_session_id: str = Field(min_length=1, max_length=255)
+    source: str = Field(min_length=1, max_length=64)
+    external_id: str | None = Field(default=None, max_length=255)
+    asset_reference: str | None = Field(default=None, max_length=2048)
+    duration_ms: int | None = Field(default=None, ge=0)
+    media_type: str | None = Field(default=None, max_length=128)
+    status: Literal["available", "processing", "unavailable"] = "available"
+    expires_at: datetime | None = None
 
 
 class BatchItemResult(BaseModel):

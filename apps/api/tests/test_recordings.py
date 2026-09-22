@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -59,8 +60,10 @@ def test_playback_redirects_only_available_cloudinary_recordings(monkeypatch) ->
         lambda recording, settings: "https://example.test/private-audio",
     )
     try:
+        session_id = uuid4()
+        recording_id = uuid4()
         response = TestClient(app).get(
-            "/api/projects/voker-voice/sessions/session-id/recordings/recording-id/playback",
+            f"/api/projects/voker-voice/sessions/{session_id}/recordings/{recording_id}/playback",
             follow_redirects=False,
         )
     finally:

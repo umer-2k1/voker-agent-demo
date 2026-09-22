@@ -9,9 +9,40 @@
     "event_id": { "type": "string", "minLength": 1, "maxLength": 64 },
     "event_type": { "type": "string", "minLength": 1, "maxLength": 128 },
     "occurred_at": { "type": "string", "format": "date-time" },
+    "sequence": { "type": ["integer", "null"], "minimum": 0 },
     "external_session_id": { "type": "string", "minLength": 1, "maxLength": 255 },
     "trace_id": { "type": "string", "minLength": 1, "maxLength": 64 },
-    "status": { "enum": ["unset", "ok", "error", "cancelled", "timeout"] }
+    "span_id": { "type": ["string", "null"], "maxLength": 64 },
+    "parent_span_id": { "type": ["string", "null"], "maxLength": 64 },
+    "turn_id": { "type": ["string", "null"], "maxLength": 64 },
+    "agent_run_id": { "type": ["string", "null"], "maxLength": 64 },
+    "parent_agent_run_id": { "type": ["string", "null"], "maxLength": 64 },
+    "agent": {
+      "type": ["object", "null"],
+      "properties": {
+        "id": { "type": ["string", "null"] },
+        "name": { "type": ["string", "null"], "maxLength": 255 },
+        "version": { "type": ["string", "null"], "maxLength": 255 }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "integration": { "type": ["string", "null"], "maxLength": 64 },
+        "provider": { "type": ["string", "null"], "maxLength": 64 },
+        "sdk": { "type": ["string", "null"], "maxLength": 128 },
+        "sdk_version": { "type": ["string", "null"], "maxLength": 64 }
+      },
+      "additionalProperties": false
+    },
+    "status": { "enum": ["unset", "ok", "error", "cancelled", "timeout"] },
+    "duration_ms": { "type": ["number", "null"], "minimum": 0 },
+    "attributes": { "type": "object" },
+    "input": { "type": ["object", "null"] },
+    "output": { "type": ["object", "null"] },
+    "usage": { "type": ["object", "null"] },
+    "error": { "type": ["object", "null"] }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

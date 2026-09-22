@@ -61,12 +61,16 @@ async def google_callback(request: Request, db: Session = Depends(get_db)) -> Re
         organization = db.scalar(
             select(Organization).where(Organization.name == "Voker Development")
         )
-        if organization is not None and db.scalar(
-            select(OrganizationMember).where(
-                OrganizationMember.organization_id == organization.id,
-                OrganizationMember.user_id == user.id,
+        if (
+            organization is not None
+            and db.scalar(
+                select(OrganizationMember).where(
+                    OrganizationMember.organization_id == organization.id,
+                    OrganizationMember.user_id == user.id,
+                )
             )
-        ) is None:
+            is None
+        ):
             db.add(
                 OrganizationMember(organization_id=organization.id, user_id=user.id, role="owner")
             )

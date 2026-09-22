@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import type { Account } from "@/pages/AccountPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { SetupPage } from "@/pages/SetupPage";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -57,11 +58,46 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
   const navigate = useNavigate();
   const { sessionId: routeSessionId } = useParams();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
-  const [sourceFilter, setSourceFilter] = useState(() => searchParams.get("source") ?? "");
+  const [statusFilter, setStatusFilter] = useState(
+    () => searchParams.get("status") ?? "",
+  );
+  const [sourceFilter, setSourceFilter] = useState(
+    () => searchParams.get("source") ?? "",
+  );
+  const [environmentFilter, setEnvironmentFilter] = useState(
+    () => searchParams.get("environment") ?? "",
+  );
+  const [agentFilter, setAgentFilter] = useState(
+    () => searchParams.get("agent") ?? "",
+  );
+  const [versionFilter, setVersionFilter] = useState(
+    () => searchParams.get("version") ?? "",
+  );
+  const [outcomeFilter, setOutcomeFilter] = useState(
+    () => searchParams.get("outcome") ?? "",
+  );
+  const [errorFilter, setErrorFilter] = useState(
+    () => searchParams.get("has_error") ?? "",
+  );
+  const [startedAfter, setStartedAfter] = useState(
+    () => searchParams.get("started_after") ?? "",
+  );
+  const [startedBefore, setStartedBefore] = useState(
+    () => searchParams.get("started_before") ?? "",
+  );
+  const [minLatency, setMinLatency] = useState(
+    () => searchParams.get("min_latency_ms") ?? "",
+  );
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
-  const [sort, setSort] = useState(() => searchParams.get("sort") ?? "started_at_desc");
-  const [offset, setOffset] = useState(() => Number(searchParams.get("offset") ?? 0));
+  const [sort, setSort] = useState(
+    () => searchParams.get("sort") ?? "started_at_desc",
+  );
+  const [offset, setOffset] = useState(() =>
+    Number(searchParams.get("offset") ?? 0),
+  );
+  const [eventOffset, setEventOffset] = useState(() =>
+    Number(searchParams.get("event_offset") ?? 0),
+  );
   const selectedSessionId = routeSessionId;
   const overviewQuery = useQuery({
     queryKey: ["overview", projectSlug],
@@ -81,6 +117,14 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
       projectSlug,
       statusFilter,
       sourceFilter,
+      environmentFilter,
+      agentFilter,
+      versionFilter,
+      outcomeFilter,
+      errorFilter,
+      startedAfter,
+      startedBefore,
+      minLatency,
       search,
       sort,
       offset,
@@ -92,6 +136,19 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
       });
       if (statusFilter) query.set("status", statusFilter);
       if (sourceFilter) query.set("source", sourceFilter);
+      if (environmentFilter) query.set("environment", environmentFilter);
+      if (agentFilter) query.set("agent", agentFilter);
+      if (versionFilter) query.set("version", versionFilter);
+      if (outcomeFilter) query.set("outcome", outcomeFilter);
+      if (errorFilter) query.set("has_error", errorFilter);
+      if (startedAfter)
+        query.set("started_after", new Date(startedAfter).toISOString());
+      if (startedBefore)
+        query.set(
+          "started_before",
+          new Date(`${startedBefore}T23:59:59`).toISOString(),
+        );
+      if (minLatency) query.set("min_latency_ms", minLatency);
       if (search.trim()) query.set("search", search.trim());
       if (sort !== "started_at_desc") query.set("sort", sort);
       return dashboardRequest<{ items: VoiceSession[]; page: SessionPage }>(
@@ -104,10 +161,11 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
       "trace",
       projectSlug,
       selectedSessionId ?? sessionsQuery.data?.items[0]?.id,
+      eventOffset,
     ],
     queryFn: () =>
       dashboardRequest<Trace>(
-        `/api/projects/${projectSlug}/sessions/${selectedSessionId ?? sessionsQuery.data?.items[0]?.id}`,
+        `/api/projects/${projectSlug}/sessions/${selectedSessionId ?? sessionsQuery.data?.items[0]?.id}?event_offset=${eventOffset}`,
       ),
     enabled: Boolean(selectedSessionId ?? sessionsQuery.data?.items[0]?.id),
   });
@@ -148,10 +206,25 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
     search?: string;
     sort?: string;
     offset?: number;
+    environment?: string;
+    agent?: string;
+    version?: string;
+    outcome?: string;
+    has_error?: string;
+    started_after?: string;
+    started_before?: string;
+    min_latency_ms?: string;
+    event_offset?: number;
   }) {
     const params = new URLSearchParams(searchParams);
     Object.entries(next).forEach(([key, value]) => {
-      if (value === undefined || value === "" || value === 0 || (key === "sort" && value === "started_at_desc")) params.delete(key);
+      if (
+        value === undefined ||
+        value === "" ||
+        value === 0 ||
+        (key === "sort" && value === "started_at_desc")
+      )
+        params.delete(key);
       else params.set(key, String(value));
     });
     setSearchParams(params, { replace: true });
@@ -239,7 +312,9 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
                 <Button
                   className="back-to-sessions"
                   onClick={() => {
-                    navigate(`/sessions${searchParams.toString() ? `?${searchParams}` : ""}`);
+                    navigate(
+                      `/sessions${searchParams.toString() ? `?${searchParams}` : ""}`,
+                    );
                   }}
                   type="button"
                 >
@@ -258,6 +333,10 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
                   onReanalyze={() =>
                     trace && reanalysisMutation.mutate(trace.session.id)
                   }
+                  onEventPage={(value) => {
+                    setEventOffset(value);
+                    syncFilterUrl({ event_offset: value });
+                  }}
                 />
               </>
             ) : (
@@ -268,6 +347,14 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
                 search={search}
                 status={statusFilter}
                 source={sourceFilter}
+                environment={environmentFilter}
+                agent={agentFilter}
+                version={versionFilter}
+                outcome={outcomeFilter}
+                hasError={errorFilter}
+                startedAfter={startedAfter}
+                startedBefore={startedBefore}
+                minLatency={minLatency}
                 sort={sort}
                 onSearch={(value) => {
                   setSearch(value);
@@ -284,13 +371,56 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
                   setOffset(0);
                   syncFilterUrl({ source: value, offset: 0 });
                 }}
+                onEnvironment={(value) => {
+                  setEnvironmentFilter(value);
+                  setOffset(0);
+                  syncFilterUrl({ environment: value, offset: 0 });
+                }}
+                onAgent={(value) => {
+                  setAgentFilter(value);
+                  setOffset(0);
+                  syncFilterUrl({ agent: value, offset: 0 });
+                }}
+                onVersion={(value) => {
+                  setVersionFilter(value);
+                  setOffset(0);
+                  syncFilterUrl({ version: value, offset: 0 });
+                }}
+                onOutcome={(value) => {
+                  setOutcomeFilter(value);
+                  setOffset(0);
+                  syncFilterUrl({ outcome: value, offset: 0 });
+                }}
+                onHasError={(value) => {
+                  setErrorFilter(value);
+                  setOffset(0);
+                  syncFilterUrl({ has_error: value, offset: 0 });
+                }}
+                onStartedAfter={(value) => {
+                  setStartedAfter(value);
+                  setOffset(0);
+                  syncFilterUrl({ started_after: value, offset: 0 });
+                }}
+                onStartedBefore={(value) => {
+                  setStartedBefore(value);
+                  setOffset(0);
+                  syncFilterUrl({ started_before: value, offset: 0 });
+                }}
+                onMinLatency={(value) => {
+                  setMinLatency(value);
+                  setOffset(0);
+                  syncFilterUrl({ min_latency_ms: value, offset: 0 });
+                }}
                 onSort={(value) => {
                   setSort(value);
                   setOffset(0);
                   syncFilterUrl({ sort: value, offset: 0 });
                 }}
                 onSelect={(id) => {
-                  navigate(`/sessions/${id}${searchParams.toString() ? `?${searchParams}` : ""}`);
+                  setEventOffset(0);
+                  navigate(
+                    `/sessions/${id}${searchParams.toString() ? `?${searchParams}` : ""}`,
+                  );
                 }}
                 onPage={(value) => {
                   setOffset(value);
@@ -314,8 +444,12 @@ export function App() {
           <Route element={<DashboardLayout />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/sessions" element={<DashboardPage sessionsOnly />} />
-            <Route path="/sessions/:sessionId" element={<DashboardPage sessionsOnly />} />
+            <Route
+              path="/sessions/:sessionId"
+              element={<DashboardPage sessionsOnly />}
+            />
             <Route path="/settings" element={<SettingsRoute />} />
+            <Route path="/setup" element={<SetupPage />} />
             <Route
               path="/account"
               element={<Navigate replace to="/settings#profile" />}

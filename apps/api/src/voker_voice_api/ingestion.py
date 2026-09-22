@@ -1,6 +1,7 @@
 import json
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -10,11 +11,14 @@ from voker_voice_api.costs import estimate_llm_cost_micros
 from voker_voice_api.models import (
     Agent,
     AgentRun,
+    AgentVersion,
+    AnalysisRun,
     APIKey,
     CostRecord,
     Error,
     Event,
     Job,
+    Recording,
     Span,
     Turn,
     UsageRecord,
@@ -23,6 +27,30 @@ from voker_voice_api.models import (
     Session as VoiceSession,
 )
 from voker_voice_api.schemas import BatchItemResult, CanonicalEvent, EventBatchResponse
+
+TERMINAL_STATUSES = {"ok", "error", "cancelled", "timeout"}
+TERMINAL_SUFFIXES = (
+    ".completed",
+    ".ended",
+    ".error",
+    ".cancelled",
+    ".timeout",
+    ".interrupted",
+)
+
+
+def comparable_datetime(value: datetime) -> datetime:
+    """Normalize database-returned naive UTC timestamps for safe producer-time comparison."""
+
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def is_earlier(candidate: datetime, current: datetime) -> bool:
+    return comparable_datetime(candidate) < comparable_datetime(current)
+
+
+def is_later(candidate: datetime, current: datetime) -> bool:
+    return comparable_datetime(candidate) > comparable_datetime(current)
 
 
 @dataclass(frozen=True)
@@ -66,6 +94,97 @@ def resolve_agent(db: Session, project_id: uuid.UUID, event: CanonicalEvent) -> 
     return agent
 
 
+def resolve_agent_version(
+    db: Session, agent: Agent | None, event: CanonicalEvent
+) -> AgentVersion | None:
+    if agent is None or event.agent is None or not event.agent.version:
+        return None
+    version = db.scalar(
+        select(AgentVersion).where(
+            AgentVersion.agent_id == agent.id,
+            AgentVersion.version == event.agent.version,
+        )
+    )
+    if version is None:
+        version = AgentVersion(agent_id=agent.id, version=event.agent.version, metadata_={})
+        db.add(version)
+        db.flush()
+    return version
+
+
+def is_terminal_event(event: CanonicalEvent) -> bool:
+    return event.event_type.endswith(TERMINAL_SUFFIXES)
+
+
+def merge_terminal_status(current: str, event: CanonicalEvent) -> str:
+    """Never let an earlier lifecycle event reopen a terminal operation."""
+
+    if current in TERMINAL_STATUSES and not is_terminal_event(event):
+        return current
+    return event.status.value
+
+
+def session_status_for_event(event: CanonicalEvent) -> str:
+    if event.status.value == "error":
+        return "failed"
+    if event.status.value == "cancelled":
+        return "cancelled"
+    if event.status.value == "timeout":
+        return "incomplete"
+    return "completed"
+
+
+def enqueue_completion_analysis(db: Session, project_id: uuid.UUID, session_id: uuid.UUID) -> None:
+    """Queue each completion analysis once while preserving explicit manual re-analysis."""
+
+    session_value = str(session_id)
+    existing = list(
+        db.scalars(
+            select(Job).where(
+                Job.project_id == project_id,
+                Job.type.in_(("run_deterministic_analysis", "run_semantic_analysis")),
+            )
+        )
+    )
+    existing_types = {
+        job.type
+        for job in existing
+        if job.payload.get("session_id") == session_value
+        and job.payload.get("trigger", "session_completion") == "session_completion"
+    }
+    for job_type in ("run_deterministic_analysis", "run_semantic_analysis"):
+        if job_type not in existing_types:
+            prompt_prefix = (
+                "deterministic" if job_type == "run_deterministic_analysis" else "semantic"
+            )
+            latest_version = db.scalar(
+                select(func.max(AnalysisRun.analysis_version)).where(
+                    AnalysisRun.session_id == session_id,
+                    AnalysisRun.prompt_version.like(f"{prompt_prefix}-%"),
+                )
+            )
+            analysis_run = AnalysisRun(
+                session_id=session_id,
+                status="queued",
+                analysis_version=int(latest_version or 0) + 1,
+                prompt_version=f"{prompt_prefix}-v2",
+                schema_version="2",
+            )
+            db.add(analysis_run)
+            db.flush()
+            db.add(
+                Job(
+                    project_id=project_id,
+                    type=job_type,
+                    payload={
+                        "session_id": session_value,
+                        "analysis_run_id": str(analysis_run.id),
+                        "trigger": "session_completion",
+                    },
+                )
+            )
+
+
 def session_for_event(db: Session, context: IngestContext, event: CanonicalEvent) -> VoiceSession:
     session = db.scalar(
         select(VoiceSession).where(
@@ -76,19 +195,32 @@ def session_for_event(db: Session, context: IngestContext, event: CanonicalEvent
     )
     if session is None:
         agent = resolve_agent(db, context.project_id, event)
+        version = resolve_agent_version(db, agent, event)
         session = VoiceSession(
             project_id=context.project_id,
             environment_id=context.environment_id,
             agent_id=agent.id if agent else None,
+            agent_version_id=version.id if version else None,
             external_session_id=event.external_session_id,
             trace_id=event.trace_id,
             source=event.source.integration or "custom",
             status="in_progress",
             started_at=event.occurred_at,
-            metadata_={},
+            metadata_=event.attributes if event.event_type == "session.started" else {},
         )
         db.add(session)
         db.flush()
+    else:
+        if is_earlier(event.occurred_at, session.started_at):
+            session.started_at = event.occurred_at
+        if event.event_type == "session.started":
+            session.metadata_ = {**session.metadata_, **event.attributes}
+        agent = resolve_agent(db, context.project_id, event)
+        version = resolve_agent_version(db, agent, event)
+        if agent is not None and session.agent_id is None:
+            session.agent_id = agent.id
+        if version is not None and session.agent_version_id is None:
+            session.agent_version_id = version.id
     return session
 
 
@@ -119,6 +251,8 @@ def upsert_turn(db: Session, session: VoiceSession, event: CanonicalEvent) -> Tu
         )
         db.add(turn)
         db.flush()
+    elif is_earlier(event.occurred_at, turn.started_at):
+        turn.started_at = event.occurred_at
     speaker = event.attributes.get("speaker")
     transcript = event.attributes.get("transcript")
     if not isinstance(transcript, str):
@@ -132,8 +266,9 @@ def upsert_turn(db: Session, session: VoiceSession, event: CanonicalEvent) -> Tu
         turn.speaker = "agent"
     if isinstance(transcript, str) and transcript:
         turn.transcript = transcript
-    if event.event_type.endswith((".completed", ".ended")):
-        turn.ended_at = event.occurred_at
+    if event.event_type.endswith((".completed", ".ended", ".abandoned")):
+        if turn.ended_at is None or is_later(event.occurred_at, turn.ended_at):
+            turn.ended_at = event.occurred_at
     return turn
 
 
@@ -149,6 +284,11 @@ def upsert_agent_run(
         )
     )
     if run is None:
+        agent = resolve_agent(db, session.project_id, event)
+        version = resolve_agent_version(db, agent, event)
+        run_attributes = dict(event.attributes)
+        if event.parent_agent_run_id:
+            run_attributes["parent_agent_run_id"] = event.parent_agent_run_id
         run = AgentRun(
             session_id=session.id,
             turn_id=turn.id if turn else None,
@@ -156,10 +296,47 @@ def upsert_agent_run(
             name=event.agent.name if event.agent and event.agent.name else "agent-run",
             status=event.status.value,
             started_at=event.occurred_at,
-            attributes={},
+            ended_at=event.occurred_at if is_terminal_event(event) else None,
+            agent_id=agent.id if agent else None,
+            agent_version_id=version.id if version else None,
+            attributes=run_attributes,
         )
         db.add(run)
         db.flush()
+    else:
+        run.status = merge_terminal_status(run.status, event)
+        if is_earlier(event.occurred_at, run.started_at):
+            run.started_at = event.occurred_at
+        run.turn_id = run.turn_id or (turn.id if turn else None)
+        run.attributes = {**run.attributes, **event.attributes}
+        if event.parent_agent_run_id:
+            run.attributes["parent_agent_run_id"] = event.parent_agent_run_id
+        if is_terminal_event(event):
+            if run.ended_at is None or is_later(event.occurred_at, run.ended_at):
+                run.ended_at = event.occurred_at
+        agent = resolve_agent(db, session.project_id, event)
+        version = resolve_agent_version(db, agent, event)
+        run.agent_id = run.agent_id or (agent.id if agent else None)
+        run.agent_version_id = run.agent_version_id or (version.id if version else None)
+    parent_external_id = event.parent_agent_run_id
+    if parent_external_id:
+        parent = db.scalar(
+            select(AgentRun).where(
+                AgentRun.session_id == session.id,
+                AgentRun.external_run_id == parent_external_id,
+            )
+        )
+        if parent is not None:
+            run.parent_run_id = parent.id
+    unresolved_children = db.scalars(
+        select(AgentRun).where(
+            AgentRun.session_id == session.id,
+            AgentRun.parent_run_id.is_(None),
+        )
+    )
+    for child in unresolved_children:
+        if child.attributes.get("parent_agent_run_id") == run.external_run_id:
+            child.parent_run_id = run.id
     return run
 
 
@@ -178,7 +355,10 @@ def upsert_span(
             Span.external_span_id == event.span_id,
         )
     )
-    terminal = event.event_type.endswith((".completed", ".error", ".cancelled", ".timeout"))
+    terminal = is_terminal_event(event)
+    span_name = event.attributes.get("name")
+    if not isinstance(span_name, str) or not span_name:
+        span_name = event.event_type.rsplit(".", maxsplit=1)[0]
     if span is None:
         span = Span(
             session_id=session.id,
@@ -186,7 +366,7 @@ def upsert_span(
             agent_run_id=run.id if run else None,
             external_span_id=event.span_id,
             parent_external_span_id=event.parent_span_id,
-            name=event.event_type,
+            name=span_name,
             kind=event.event_type.split(".", maxsplit=1)[0],
             status=event.status.value,
             source=event.source.provider or event.source.integration,
@@ -200,12 +380,21 @@ def upsert_span(
         db.add(span)
         db.flush()
     else:
-        span.status = event.status.value
-        span.ended_at = event.occurred_at if terminal else span.ended_at
-        span.duration_ms = event.duration_ms or span.duration_ms
+        span.status = merge_terminal_status(span.status, event)
+        if is_earlier(event.occurred_at, span.started_at):
+            span.started_at = event.occurred_at
+        if terminal:
+            if span.ended_at is None or is_later(event.occurred_at, span.ended_at):
+                span.ended_at = event.occurred_at
+        if event.duration_ms is not None:
+            span.duration_ms = event.duration_ms
         span.attributes = {**span.attributes, **event.attributes}
-        span.input_ = event.input or span.input_
-        span.output = event.output or span.output
+        if event.input is not None:
+            span.input_ = event.input
+        if event.output is not None:
+            span.output = event.output
+        span.turn_id = span.turn_id or (turn.id if turn else None)
+        span.agent_run_id = span.agent_run_id or (run.id if run else None)
 
     if event.parent_span_id:
         parent = db.scalar(
@@ -278,6 +467,7 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
                 stacktrace=event.error.stacktrace,
             )
         )
+    provider_cost = event.attributes.get("provider_cost_micros")
     if event.usage:
         db.add(
             UsageRecord(
@@ -294,11 +484,15 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
                 attributes={},
             )
         )
-        estimate = estimate_llm_cost_micros(
-            provider=event.usage.provider,
-            model=event.usage.model,
-            input_tokens=event.usage.input_tokens,
-            output_tokens=event.usage.output_tokens,
+        estimate = (
+            None
+            if isinstance(provider_cost, (int, float))
+            else estimate_llm_cost_micros(
+                provider=event.usage.provider,
+                model=event.usage.model,
+                input_tokens=event.usage.input_tokens,
+                output_tokens=event.usage.output_tokens,
+            )
         )
         if estimate is not None:
             amount_micros, rate_card = estimate
@@ -312,23 +506,68 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
                     is_estimate=True,
                 )
             )
-    if event.event_type == "session.ended":
-        session.status = "completed"
-        session.ended_at = event.occurred_at
+    if isinstance(provider_cost, (int, float)) and provider_cost >= 0:
         db.add(
-            Job(
-                project_id=context.project_id,
-                type="run_deterministic_analysis",
-                payload={"session_id": str(session.id)},
+            CostRecord(
+                session_id=session.id,
+                span_id=span.id if span else None,
+                amount_micros=round(provider_cost),
+                source="provider",
+                rate_card_version=None,
+                is_estimate=False,
             )
         )
-        db.add(
-            Job(
-                project_id=context.project_id,
-                type="run_semantic_analysis",
-                payload={"session_id": str(session.id)},
+    if event.event_type == "recording.available":
+        asset_reference = event.attributes.get("recording_url")
+        external_id = event.attributes.get("recording_external_id")
+        existing_recording = db.scalar(
+            select(Recording).where(
+                Recording.session_id == session.id,
+                Recording.source
+                == (event.source.provider or event.source.integration or "provider"),
+                Recording.external_id == (external_id if isinstance(external_id, str) else None),
             )
         )
+        if existing_recording is None:
+            db.add(
+                Recording(
+                    session_id=session.id,
+                    source=event.source.provider or event.source.integration or "provider",
+                    external_id=external_id if isinstance(external_id, str) else None,
+                    asset_reference=asset_reference if isinstance(asset_reference, str) else None,
+                    duration_ms=(
+                        round(event.duration_ms) if event.duration_ms is not None else None
+                    ),
+                    media_type=(
+                        str(event.attributes["media_type"])
+                        if event.attributes.get("media_type")
+                        else None
+                    ),
+                    status="available" if isinstance(asset_reference, str) else "unavailable",
+                )
+            )
+        else:
+            if isinstance(asset_reference, str):
+                existing_recording.asset_reference = asset_reference
+                existing_recording.status = "available"
+    if event.event_type in {"session.ended", "session.error"}:
+        session.status = session_status_for_event(event)
+        if session.ended_at is None or is_later(event.occurred_at, session.ended_at):
+            session.ended_at = event.occurred_at
+        outcome = event.attributes.get("outcome")
+        outcome_source = event.attributes.get("outcome_source")
+        if isinstance(outcome, str):
+            session.outcome = outcome
+        if isinstance(outcome_source, str):
+            session.outcome_source = outcome_source
+        if event.event_type == "session.ended":
+            enqueue_completion_analysis(db, context.project_id, session.id)
+    elif event.event_type == "outcome.recorded":
+        outcome = event.attributes.get("outcome")
+        source = event.attributes.get("source")
+        if isinstance(outcome, str):
+            session.outcome = outcome
+            session.outcome_source = source if isinstance(source, str) else "explicit"
     return "accepted"
 
 

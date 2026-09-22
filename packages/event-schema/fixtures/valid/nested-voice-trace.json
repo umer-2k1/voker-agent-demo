@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "events": [
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_fixture_session_started",
+      "event_type": "session.started",
+      "occurred_at": "2026-09-21T10:00:00Z",
+      "sequence": 1,
+      "external_session_id": "fixture-call-1",
+      "trace_id": "fixture-trace-1",
+      "agent": { "name": "support-agent", "version": "1.0" },
+      "source": { "integration": "custom", "sdk": "voker-voice-python", "sdk_version": "0.1.0" },
+      "status": "ok",
+      "attributes": { "channel": "test" }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_fixture_llm_completed",
+      "event_type": "llm.completed",
+      "occurred_at": "2026-09-21T10:00:02Z",
+      "sequence": 2,
+      "external_session_id": "fixture-call-1",
+      "trace_id": "fixture-trace-1",
+      "span_id": "fixture-llm-1",
+      "turn_id": "fixture-turn-1",
+      "agent_run_id": "fixture-run-1",
+      "agent": { "name": "support-agent", "version": "1.0" },
+      "source": { "integration": "custom", "provider": "openrouter" },
+      "status": "ok",
+      "duration_ms": 850,
+      "attributes": { "name": "generate response" },
+      "output": { "text": "Your appointment is confirmed." },
+      "usage": { "provider": "openrouter", "model": "test/model", "input_tokens": 12, "output_tokens": 8, "total_tokens": 20 }
+    }
+  ]
+}

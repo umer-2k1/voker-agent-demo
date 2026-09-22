@@ -31,6 +31,38 @@ export type Analytics = {
       max_ms: number;
     } | null
   >;
+  rates: Record<
+    "resolution" | "correction" | "escalation" | "abandonment" | "error",
+    number | null
+  >;
+  failure_categories: Record<string, number>;
+  failure_category_insights: Array<{
+    category: string;
+    count: number;
+    session_ids: string[];
+  }>;
+  tool_failure_count: number;
+  insights: Array<{
+    key: string;
+    label: string;
+    count: number;
+    session_ids: string[];
+  }>;
+  comparisons: {
+    agents: Array<{
+      label: string;
+      sessions: number;
+      resolved: number;
+      resolution_rate: number;
+    }>;
+    providers: Array<{
+      label: string;
+      sessions: number;
+      resolved: number;
+      resolution_rate: number;
+    }>;
+  };
+  outcome_sources: { explicit: number; inferred: number; unknown: number };
 };
 
 export type VoiceSession = {
@@ -39,17 +71,32 @@ export type VoiceSession = {
   status: string;
   source: string;
   started_at: string;
+  ended_at?: string | null;
   error_count: number;
   event_count: number;
   outcome?: string | null;
+  outcome_source?: string | null;
+  duration_ms?: number | null;
+  environment?: string | null;
+  agent?: string | null;
+  agent_version?: string | null;
 };
 
 export type SessionPage = { offset: number; limit: number; total: number };
 
 export type Trace = {
   session: VoiceSession;
+  event_page: SessionPage;
+  voice_behavior: {
+    interruptions: number;
+    talk_over: number;
+    dead_air: number;
+    corrections: number;
+    abandonment: number;
+  };
   events: Array<{
     id: string;
+    event_id: string;
     event_type: string;
     status: string;
     occurred_at: string;
@@ -62,26 +109,101 @@ export type Trace = {
     sequence: number;
     speaker: string;
     started_at: string;
+    ended_at: string | null;
     transcript: string | null;
+    attributes: Record<string, unknown>;
   }>;
-  errors: Array<{ id: string; type: string; message: string }>;
+  spans: Array<{
+    id: string;
+    external_span_id: string;
+    parent_external_span_id: string | null;
+    name: string;
+    kind: string;
+    status: string;
+    source: string | null;
+    turn_id: string | null;
+    agent_run_id: string | null;
+    started_at: string;
+    ended_at: string | null;
+    duration_ms: number | null;
+    attributes: Record<string, unknown>;
+    input: Record<string, unknown> | null;
+    output: Record<string, unknown> | null;
+  }>;
+  agent_runs: Array<{
+    id: string;
+    external_run_id: string;
+    parent_run_id: string | null;
+    turn_id: string | null;
+    name: string;
+    status: string;
+    started_at: string;
+    ended_at: string | null;
+    agent: string | null;
+    version: string | null;
+    attributes: Record<string, unknown>;
+  }>;
+  errors: Array<{
+    id: string;
+    type: string;
+    code: string | null;
+    message: string;
+    retryable: boolean;
+    retry_count: number;
+    event_id: string | null;
+    span_id: string | null;
+    created_at: string;
+  }>;
+  usage: Array<{
+    provider: string | null;
+    model: string | null;
+    input_tokens: number | null;
+    output_tokens: number | null;
+    total_tokens: number | null;
+    audio_seconds: number | null;
+    tts_characters: number | null;
+  }>;
+  costs: Array<{
+    amount_micros: number;
+    currency: string;
+    source: string;
+    is_estimate: boolean;
+    rate_card_version: string | null;
+    span_id: string | null;
+  }>;
   findings: Array<{
     id: string;
     certainty: string;
     severity: string | null;
     statement: string;
+    confidence: number | null;
+    rule_id: string | null;
+    rule_version: string | null;
+    attributes: Record<string, unknown>;
     evidence: Array<{
       entity_type: string;
       entity_id: string;
       event_id: string | null;
+      span_id: string | null;
       turn_id: string | null;
     }>;
   }>;
   analysis_runs: Array<{
     id: string;
     status: string;
+    analysis_version: number;
     prompt_version: string;
     model: string | null;
+    schema_version: string;
+    evaluator_latency_ms: number | null;
+    input_tokens: number | null;
+    output_tokens: number | null;
+    cost_micros: number | null;
+    result: Record<string, unknown> | null;
+    error: string | null;
+    started_at: string | null;
+    completed_at: string | null;
+    created_at: string;
   }>;
   recordings: Array<{
     id: string;
@@ -89,5 +211,33 @@ export type Trace = {
     duration_ms: number | null;
     media_type: string | null;
     status: string;
+    expires_at: string | null;
   }>;
+};
+
+export type ProjectSetup = {
+  project: { id: string; name: string; slug: string };
+  environments: Array<{ id: string; name: string; slug: string }>;
+  integrations: Array<{
+    id: string;
+    provider: string;
+    name: string;
+    status: string;
+    selected_resources: ProviderResource[];
+    webhook_url: string | null;
+    forwarding_enabled: boolean;
+    forwarding_destinations: string[];
+    forwarding_failures: number;
+    last_delivery_at: string | null;
+    normalization_state: "processed" | "pending" | "not_yet_observed";
+  }>;
+  last_received_event_at: string | null;
+  observed_stages: string[];
+};
+
+export type ProviderResource = {
+  id: string;
+  name: string;
+  version: string | null;
+  existing_webhook_url: string | null;
 };

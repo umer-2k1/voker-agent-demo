@@ -65,6 +65,7 @@ def latency_distribution(values: Iterable[float]) -> dict[str, float | int] | No
     return {
         "sample_size": len(ordered),
         "p50_ms": percentile(0.5),
+        "p90_ms": percentile(0.9),
         "p95_ms": percentile(0.95),
         "max_ms": ordered[-1],
     }

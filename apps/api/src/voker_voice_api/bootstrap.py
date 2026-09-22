@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from voker_voice_api.models import (
     Agent,
+    AgentVersion,
     APIKey,
     CostRecord,
     Environment,
@@ -115,7 +116,45 @@ def seed_demo_sessions(db: Session, *, count: int = 20) -> int:
     events, spans, usage/cost, recordings, and evidence-linked findings.
     """
 
-    _, project, environment, agent = ensure_development_seed(db)
+    _, project, environment, default_agent = ensure_development_seed(db)
+    agent_specs = (
+        ("Support Agent", "support-agent", "v2.4"),
+        ("Order Agent", "order-agent", "v1.8"),
+        ("Scheduling Agent", "scheduling-agent", "v3.1"),
+    )
+    agents: dict[str, tuple[Agent, AgentVersion]] = {}
+    for name, slug, version_name in agent_specs:
+        agent = (
+            default_agent
+            if slug == DEVELOPMENT_AGENT_SLUG
+            else db.scalar(select(Agent).where(Agent.project_id == project.id, Agent.slug == slug))
+        )
+        if agent is None:
+            agent = Agent(project_id=project.id, name=name, slug=slug, source="custom")
+            db.add(agent)
+            db.flush()
+        version = db.scalar(
+            select(AgentVersion).where(
+                AgentVersion.agent_id == agent.id,
+                AgentVersion.version == version_name,
+            )
+        )
+        if version is None:
+            version = AgentVersion(
+                agent_id=agent.id,
+                version=version_name,
+                metadata_={"seed": "demo"},
+            )
+            db.add(version)
+            db.flush()
+        agents[slug] = (agent, version)
+
+    scenarios = (
+        ("track_order", "order-agent", "Can you check the status of my order?"),
+        ("update_subscription", "support-agent", "I need help updating my subscription."),
+        ("cancel_order", "order-agent", "Please cancel the order I just placed."),
+        ("reschedule_appointment", "scheduling-agent", "I need to move my appointment."),
+    )
     created = 0
     baseline = datetime.now(UTC).replace(microsecond=0) - timedelta(hours=count * 2)
     audio_asset = "kave_msri-cinematic-hit-3-317170.mp3"
@@ -130,21 +169,33 @@ def seed_demo_sessions(db: Session, *, count: int = 20) -> int:
         ):
             continue
         started_at = baseline + timedelta(hours=index * 2)
+        intent, agent_slug, customer_request = scenarios[(index - 1) % len(scenarios)]
+        agent, agent_version = agents[agent_slug]
         has_error = index % 4 == 0
+        escalated = index % 10 == 0
         slow_stt = index % 3 == 0
+        interruption_total = 3 + (index % 3) if has_error else (1 if index % 6 == 0 else 0)
+        has_dead_air = index % 5 == 0
+        has_correction = index % 7 == 0
+        outcome = "escalated" if escalated else ("failed" if has_error else "resolved")
         session = VoiceSession(
             project_id=project.id,
             environment_id=environment.id,
             agent_id=agent.id,
+            agent_version_id=agent_version.id,
             external_session_id=external_id,
             trace_id=f"demo-trace-{index:03d}",
             source=("vapi" if index % 2 else "retell"),
             status="failed" if has_error else "completed",
-            outcome="failed" if has_error else "resolved",
+            outcome=outcome,
             outcome_source="demo_seed",
             started_at=started_at,
             ended_at=started_at + timedelta(seconds=208),
-            metadata_={"seed": "demo", "scenario": "retry" if has_error else "support"},
+            metadata_={
+                "seed": "demo",
+                "scenario": "retry" if has_error else "support",
+                "intent": intent,
+            },
         )
         db.add(session)
         db.flush()
@@ -155,11 +206,7 @@ def seed_demo_sessions(db: Session, *, count: int = 20) -> int:
             speaker="customer",
             started_at=started_at + timedelta(seconds=4),
             ended_at=started_at + timedelta(seconds=19),
-            transcript=(
-                "I need help updating my subscription."
-                if index % 2
-                else "Can you check the status of my order?"
-            ),
+            transcript=customer_request,
             attributes={"seed": "demo"},
         )
         agent_turn = Turn(
@@ -235,19 +282,70 @@ def seed_demo_sessions(db: Session, *, count: int = 20) -> int:
             payload={"seed": "demo", "text": agent_turn.transcript},
             raw_payload=None,
         )
+        behavior_events: list[Event] = []
+        sequence = 3
+        for interruption in range(interruption_total):
+            behavior_events.append(
+                Event(
+                    project_id=project.id,
+                    session_id=session.id,
+                    turn_id=agent_turn.id,
+                    event_id=f"demo-{index}-interruption-{interruption}",
+                    event_type="voice.interruption",
+                    sequence=sequence,
+                    occurred_at=started_at + timedelta(seconds=48 + interruption * 12),
+                    status="ok",
+                    duration_ms=450 + interruption * 80,
+                    payload={"seed": "demo", "speaker": "customer"},
+                    raw_payload=None,
+                )
+            )
+            sequence += 1
+        if has_dead_air:
+            behavior_events.append(
+                Event(
+                    project_id=project.id,
+                    session_id=session.id,
+                    event_id=f"demo-{index}-dead-air",
+                    event_type="voice.dead_air",
+                    sequence=sequence,
+                    occurred_at=started_at + timedelta(seconds=96),
+                    status="ok",
+                    duration_ms=2700,
+                    payload={"seed": "demo"},
+                    raw_payload=None,
+                )
+            )
+            sequence += 1
+        if has_correction:
+            behavior_events.append(
+                Event(
+                    project_id=project.id,
+                    session_id=session.id,
+                    turn_id=customer_turn.id,
+                    event_id=f"demo-{index}-correction",
+                    event_type="correction.transcript",
+                    sequence=sequence,
+                    occurred_at=started_at + timedelta(seconds=17),
+                    status="ok",
+                    payload={"seed": "demo", "reason": "entity correction"},
+                    raw_payload=None,
+                )
+            )
+            sequence += 1
         end_event = Event(
             project_id=project.id,
             session_id=session.id,
             event_id=f"demo-{index}-ended",
             event_type="session.ended",
-            sequence=3,
+            sequence=sequence,
             occurred_at=session.ended_at,
             status="error" if has_error else "ok",
             duration_ms=None,
             payload={"seed": "demo", "outcome": session.outcome},
             raw_payload=None,
         )
-        db.add_all((stt_event, reply_event, end_event))
+        db.add_all((stt_event, reply_event, *behavior_events, end_event))
         db.flush()
         db.add(
             UsageRecord(

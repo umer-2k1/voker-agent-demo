@@ -122,7 +122,7 @@ def list_api_keys(
     project_slug: str, user: AuthenticatedUser, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     project = project_for_slug(db, project_slug, user)
-    keys = db.scalars(
+    keys = db.execute(
         select(APIKey, Environment)
         .join(Environment, APIKey.environment_id == Environment.id)
         .where(APIKey.project_id == project.id)
@@ -659,6 +659,8 @@ def analytics_overview(
             VoiceSession.source.label("source"),
             VoiceSession.agent_id.label("agent_id"),
             VoiceSession.agent_version_id.label("agent_version_id"),
+            VoiceSession.started_at.label("started_at"),
+            VoiceSession.metadata_.label("metadata"),
         )
         .where(*conditions)
         .subquery("filtered_sessions")
@@ -841,6 +843,123 @@ def analytics_overview(
         "no_dead_air": cohort(cohort_rows.c.dead_air == 0),
     }
 
+    # The dashboard visualizations remain evidence-bounded: every point and
+    # aggregate below is derived from the same filtered session set and keeps a
+    # representative session link for investigation.
+    visual_rows = db.execute(
+        select(
+            cohort_rows.c.id,
+            cohort_rows.c.outcome,
+            cohort_rows.c.interruptions,
+            cohort_rows.c.dead_air,
+            cohort_rows.c.stt_duration_ms,
+            filtered.c.started_at,
+            filtered.c.metadata,
+        )
+        .join(filtered, filtered.c.id == cohort_rows.c.id)
+        .order_by(filtered.c.started_at)
+        .limit(10_000)
+    ).all()
+
+    def intent_label(metadata: Any) -> str:
+        value = metadata.get("intent") if isinstance(metadata, dict) else None
+        if not isinstance(value, str) or not value.strip():
+            return "Unclassified"
+        return value.replace("_", " ").strip().title()
+
+    intent_buckets: dict[str, dict[str, Any]] = {}
+    volume_buckets: dict[str, int] = {}
+    interruption_resolution_points = []
+    for row in visual_rows:
+        label = intent_label(row.metadata)
+        intent = intent_buckets.setdefault(
+            label,
+            {"sessions": 0, "known_outcomes": 0, "resolved": 0, "session_ids": []},
+        )
+        intent["sessions"] += 1
+        if row.outcome is not None:
+            intent["known_outcomes"] += 1
+            if row.outcome in resolved_values:
+                intent["resolved"] += 1
+        if len(intent["session_ids"]) < 10:
+            intent["session_ids"].append(str(row.id))
+
+        day = row.started_at.date().isoformat()
+        volume_buckets[day] = volume_buckets.get(day, 0) + 1
+        if row.outcome is not None:
+            interruption_resolution_points.append(
+                {
+                    "session_id": str(row.id),
+                    "intent": label,
+                    "interruptions": int(row.interruptions or 0),
+                    "resolution": 1 if row.outcome in resolved_values else 0,
+                    "outcome": str(row.outcome),
+                }
+            )
+
+    intent_comparisons = sorted(
+        (
+            {
+                "label": label,
+                **bucket,
+                "resolution_rate": (
+                    bucket["resolved"] / bucket["known_outcomes"]
+                    if bucket["known_outcomes"]
+                    else None
+                ),
+            }
+            for label, bucket in intent_buckets.items()
+        ),
+        key=lambda item: (
+            item["resolution_rate"] is not None,
+            item["resolution_rate"] or 0,
+            item["sessions"],
+        ),
+        reverse=True,
+    )
+
+    def impact(
+        key: str, label: str, affected: dict[str, Any] | None, baseline: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if affected is None or baseline is None:
+            return None
+        return {
+            "key": key,
+            "label": label,
+            "affected_resolution_rate": affected["resolution_rate"],
+            "baseline_resolution_rate": baseline["resolution_rate"],
+            "impact_percentage_points": round(
+                (affected["resolution_rate"] - baseline["resolution_rate"]) * 100, 1
+            ),
+            "sample_size": affected["sample_size"],
+            "session_ids": affected["session_ids"],
+        }
+
+    voice_issue_impacts = [
+        item
+        for item in (
+            impact(
+                "high_interruption",
+                "High interruption rate",
+                voice_cohorts["high_interruption"],
+                voice_cohorts["normal_interruption"],
+            ),
+            impact(
+                "slow_stt",
+                "Slow STT finalization",
+                voice_cohorts["slow_stt"],
+                voice_cohorts["fast_stt"],
+            ),
+            impact(
+                "dead_air",
+                "Excessive dead air",
+                voice_cohorts["dead_air"],
+                voice_cohorts["no_dead_air"],
+            ),
+        )
+        if item is not None
+    ]
+
     latency: dict[str, Any] = {}
     for kind in ("stt", "llm", "tool", "tts", "voice"):
         values = [
@@ -1022,6 +1141,12 @@ def analytics_overview(
             "tts_characters": usage_row.tts_characters,
         },
         "voice_impact_cohorts": voice_cohorts,
+        "volume_trend": [
+            {"date": day, "sessions": sessions} for day, sessions in sorted(volume_buckets.items())
+        ],
+        "intent_comparisons": intent_comparisons,
+        "interruption_resolution_points": interruption_resolution_points,
+        "voice_issue_impacts": voice_issue_impacts,
         "latency": latency,
         "latency_sample_limit_per_stage": 10_000,
         "rates": {

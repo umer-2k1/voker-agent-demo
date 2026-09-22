@@ -48,10 +48,29 @@ export type Analytics = {
     {
       sample_size: number;
       p50_ms: number;
+      p90_ms: number;
       p95_ms: number;
       max_ms: number;
     } | null
   >;
+  volume_trend: Array<{ date: string; sessions: number }>;
+  intent_comparisons: ComparisonItem[];
+  interruption_resolution_points: Array<{
+    session_id: string;
+    intent: string;
+    interruptions: number;
+    resolution: number;
+    outcome: string;
+  }>;
+  voice_issue_impacts: Array<{
+    key: string;
+    label: string;
+    affected_resolution_rate: number;
+    baseline_resolution_rate: number;
+    impact_percentage_points: number;
+    sample_size: number;
+    session_ids: string[];
+  }>;
   rates: Record<
     "resolution" | "correction" | "escalation" | "abandonment" | "error",
     number | null

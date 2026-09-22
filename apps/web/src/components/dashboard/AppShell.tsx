@@ -3,12 +3,11 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   Bot,
-  ClipboardCheck,
   Headphones,
   LayoutDashboard,
+  Menu,
   PlugZap,
   Settings,
-  Users,
 } from "lucide-react";
 
 import type { Account } from "@/pages/AccountPage";
@@ -52,7 +51,10 @@ export function AppShell({ account }: { account: Account }) {
     },
   });
   return (
-    <main className="product-shell">
+    <div className="product-shell">
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark">V</span>
@@ -77,10 +79,10 @@ export function AppShell({ account }: { account: Account }) {
           </NavLink>
           <NavLink
             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/#insights"
+            to="/intents"
           >
             <BarChart3 aria-hidden="true" size={16} />
-            Intelligence
+            Intents
           </NavLink>
           <NavLink
             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
@@ -89,15 +91,12 @@ export function AppShell({ account }: { account: Account }) {
             <PlugZap aria-hidden="true" size={16} />
             Setup
           </NavLink>
-          <span className="nav-item nav-item-muted">
+          <NavLink
+            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+            to="/agents"
+          >
             <Bot aria-hidden="true" size={16} /> Agents
-          </span>
-          <span className="nav-item nav-item-muted">
-            <ClipboardCheck aria-hidden="true" size={16} /> Evaluations
-          </span>
-          <span className="nav-item nav-item-muted">
-            <Users aria-hidden="true" size={16} /> Team
-          </span>
+          </NavLink>
           <NavLink
             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
             to="/settings"
@@ -134,27 +133,39 @@ export function AppShell({ account }: { account: Account }) {
           <span>Voker</span>
         </NavLink>
         <nav aria-label="Mobile navigation">
-          <NavLink end to="/">
-            Overview
-          </NavLink>
-          <NavLink to="/sessions">Sessions</NavLink>
-          <NavLink to="/settings">Settings</NavLink>
-          <NavLink to="/setup">Setup</NavLink>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                className="mobile-avatar"
-                size="icon-sm"
-                variant="ghost"
-                aria-label="Account menu"
+                className="mobile-menu-trigger"
+                variant="outline"
+                aria-label="Open navigation menu"
               >
-                {initials(account)}
+                <Menu aria-hidden="true" size={18} /> Menu
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>
                 {account.display_name ?? account.email}
               </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => navigate("/")}>
+                Overview
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate("/intents")}>
+                Intents
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate("/sessions")}>
+                Sessions
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate("/agents")}>
+                Agents
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate("/setup")}>
+                Setup
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate("/settings")}>
+                Workspace settings
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => navigate("/settings#profile")}>
                 Profile settings
@@ -170,7 +181,9 @@ export function AppShell({ account }: { account: Account }) {
           </DropdownMenu>
         </nav>
       </header>
-      <Outlet />
-    </main>
+      <div id="main-content" className="contents">
+        <Outlet />
+      </div>
+    </div>
   );
 }

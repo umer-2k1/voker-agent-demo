@@ -199,7 +199,10 @@ function TraceWaterfall({ trace }: { trace: Trace }) {
     );
 
   return (
-    <div className="grid min-w-[560px] gap-2" aria-label="Nested trace waterfall">
+    <div
+      className="grid min-w-[560px] gap-2"
+      aria-label="Nested trace waterfall"
+    >
       <div className="grid grid-cols-[minmax(150px,260px)_minmax(260px,1fr)_88px] gap-3 px-3 text-xs font-semibold text-slate-500">
         <span>Operation</span>
         <span>Relative timeline</span>
@@ -356,6 +359,7 @@ function TracePanelContent({
   );
   const [playheadSeconds, setPlayheadSeconds] = useState(0);
   const [seekNotice, setSeekNotice] = useState("");
+  const [shareCopied, setShareCopied] = useState(false);
   const waveformRef = useRef<WaveSurfer | null>(null);
   const pendingSeekRef = useRef<number | null>(null);
   const handleWaveReady = useCallback((wave: WaveSurfer | null) => {
@@ -435,11 +439,13 @@ function TracePanelContent({
         <Button
           variant="outline"
           size="sm"
-          onClick={() =>
-            void navigator.clipboard?.writeText(window.location.href)
-          }
+          onClick={() => {
+            void navigator.clipboard?.writeText(window.location.href);
+            setShareCopied(true);
+            window.setTimeout(() => setShareCopied(false), 1800);
+          }}
         >
-          <Share2 size={14} /> Share
+          <Share2 size={14} /> {shareCopied ? "Copied" : "Share"}
         </Button>
       </CardHeader>
 
@@ -475,6 +481,115 @@ function TracePanelContent({
           </div>
         ))}
       </dl>
+
+      <section
+        className="conversation-timeline"
+        aria-labelledby="conversation-timeline-heading"
+      >
+        <div className="conversation-timeline-heading">
+          <div>
+            <h3 id="conversation-timeline-heading">Conversation timeline</h3>
+            <p>Open a turn or voice event at its recorded point in the call.</p>
+          </div>
+          <div
+            className="conversation-timeline-legend"
+            aria-label="Timeline legend"
+          >
+            <span>
+              <i className="customer" /> Customer
+            </span>
+            <span>
+              <i className="agent" /> Agent
+            </span>
+            <span>
+              <i className="interruption" /> Interruption
+            </span>
+            <span>
+              <i className="dead-air" /> Dead air
+            </span>
+          </div>
+        </div>
+        <div className="conversation-timeline-track">
+          {trace.turns.map((turn) => {
+            const start = turnOffsetSeconds(turn, trace);
+            const end = turn.ended_at
+              ? Math.max(
+                  start + 1,
+                  (new Date(turn.ended_at).getTime() -
+                    new Date(trace.session.started_at).getTime()) /
+                    1000,
+                )
+              : start + 3;
+            const total = Math.max(
+              (trace.session.duration_ms ?? 1) / 1000,
+              end,
+            );
+            return (
+              <button
+                key={turn.id}
+                className={`timeline-segment ${turn.speaker === "customer" ? "customer" : "agent"}`}
+                style={{
+                  left: `${(start / total) * 100}%`,
+                  width: `${Math.max(1.5, ((end - start) / total) * 100)}%`,
+                }}
+                title={`${turn.speaker} at ${formatClock(start)}`}
+                aria-label={`Open ${turn.speaker} turn at ${formatClock(start)}`}
+                onClick={() => seekToTurn(turn)}
+              />
+            );
+          })}
+          {trace.events
+            .filter(
+              (event) =>
+                event.event_type === "voice.interruption" ||
+                event.event_type === "voice.dead_air" ||
+                event.event_type === "voice.dead-air",
+            )
+            .map((event) => {
+              const total = Math.max(
+                (trace.session.duration_ms ?? 1) / 1000,
+                1,
+              );
+              const start = Math.max(
+                0,
+                (new Date(event.occurred_at).getTime() -
+                  new Date(trace.session.started_at).getTime()) /
+                  1000,
+              );
+              const kind =
+                event.event_type === "voice.interruption"
+                  ? "interruption"
+                  : "dead-air";
+              return (
+                <button
+                  key={event.id}
+                  className={`timeline-segment ${kind}`}
+                  style={{
+                    left: `${Math.min(99, (start / total) * 100)}%`,
+                    width: `${Math.max(1.2, ((event.duration_ms ?? 800) / 1000 / total) * 100)}%`,
+                  }}
+                  title={`${event.event_type} at ${formatClock(start)}`}
+                  aria-label={`Open ${event.event_type} at ${formatClock(start)}`}
+                  onClick={() =>
+                    revealEvidence({
+                      event_id: event.id,
+                      span_id: null,
+                      turn_id: null,
+                    })
+                  }
+                />
+              );
+            })}
+        </div>
+        <div className="conversation-timeline-scale" aria-hidden="true">
+          <span>0:00</span>
+          <span>{formatClock((trace.session.duration_ms ?? 0) / 2000)}</span>
+          <span>{formatClock((trace.session.duration_ms ?? 0) / 1000)}</span>
+        </div>
+        <p className="sr-only" aria-live="polite">
+          {shareCopied ? "Session link copied to clipboard." : ""}
+        </p>
+      </section>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="p-5">
         <TabsList variant="line" className="mb-5 gap-5 p-0">

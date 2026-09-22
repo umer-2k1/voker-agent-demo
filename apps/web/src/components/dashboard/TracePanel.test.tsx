@@ -113,7 +113,10 @@ test("seeks the waveform and marks the matching transcript turn", () => {
     button: 0,
     ctrlKey: false,
   });
-  fireEvent.click(screen.getByRole("button", { name: /customer/i }));
+  expect(
+    screen.getByRole("heading", { name: "Conversation timeline" }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole("button", { name: /customer/i }).at(-1)!);
   expect(wave.setTime).toHaveBeenCalledWith(5);
   expect(wave.play).toHaveBeenCalled();
   expect(screen.getByText(/seeking to customer at 0:05/i)).toBeVisible();

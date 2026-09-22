@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -56,16 +59,22 @@ def access_database() -> tuple[Session, User, User, Project, Project, Environmen
         [
             environment,
             second_environment,
-            OrganizationMember(
-                organization_id=first_org.id, user_id=owner.id, role="owner"
-            ),
-            OrganizationMember(
-                organization_id=first_org.id, user_id=member.id, role="member"
-            ),
+            OrganizationMember(organization_id=first_org.id, user_id=owner.id, role="owner"),
+            OrganizationMember(organization_id=first_org.id, user_id=member.id, role="member"),
         ]
     )
     db.commit()
     return db, owner, member, first_project, second_project, environment
+
+
+def test_dashboard_session_parses_persisted_uuid_and_rejects_invalid_value() -> None:
+    db, owner, _, _, _, _ = access_database()
+
+    assert require_dashboard_user(SimpleNamespace(session={"user_id": str(owner.id)}), db) == owner
+    with pytest.raises(HTTPException, match="Sign in required") as invalid:
+        require_dashboard_user(SimpleNamespace(session={"user_id": "not-a-uuid"}), db)
+    assert invalid.value.status_code == 401
+    db.close()
 
 
 def test_project_reads_are_org_scoped_and_slug_collisions_fail_closed() -> None:
@@ -133,12 +142,23 @@ def test_members_can_read_but_only_owner_or_admin_can_mutate_keys() -> None:
         )
         assert created.status_code == 201
         assert created.json()["api_key"].startswith("vkr_")
+        listed = client.get("/api/projects/voice/api-keys")
+        assert listed.status_code == 200
+        assert listed.json()["items"] == [
+            {
+                "id": listed.json()["items"][0]["id"],
+                "label": "SDK",
+                "prefix": created.json()["prefix"],
+                "environment": "development",
+                "created_at": listed.json()["items"][0]["created_at"],
+                "last_used_at": None,
+                "revoked_at": None,
+            }
+        ]
         key = db.scalar(select(APIKey).where(APIKey.prefix == created.json()["prefix"]))
         assert key is not None
         app.dependency_overrides[require_dashboard_user] = lambda: member
-        assert (
-            client.post(f"/api/projects/voice/api-keys/{key.id}/revoke").status_code == 403
-        )
+        assert client.post(f"/api/projects/voice/api-keys/{key.id}/revoke").status_code == 403
     finally:
         app.dependency_overrides.clear()
         db.close()
@@ -227,9 +247,7 @@ def test_recording_and_live_stream_lookup_cannot_cross_project_or_environment() 
             follow_redirects=False,
         )
         assert playback.status_code == 404
-        dashboard_live = client.get(
-            f"/api/projects/voice/sessions/{other_session.id}/live"
-        )
+        dashboard_live = client.get(f"/api/projects/voice/sessions/{other_session.id}/live")
         assert dashboard_live.status_code == 404
         ingest_live = client.get(
             "/v1/live/sessions/shared-call",

@@ -1,6 +1,7 @@
 """Google-authenticated dashboard session endpoints."""
 
 from typing import Any, cast
+from uuid import UUID
 
 from authlib.integrations.starlette_client import OAuth  # type: ignore[import-untyped]
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -92,7 +93,11 @@ def require_dashboard_user(request: Request, db: Session = Depends(get_db)) -> U
     """Require an authenticated signed browser session for dashboard data."""
 
     user_id = request.session.get("user_id")
-    user = db.get(User, user_id) if user_id else None
+    try:
+        parsed_user_id = UUID(str(user_id)) if user_id else None
+    except (TypeError, ValueError, AttributeError):
+        parsed_user_id = None
+    user = db.get(User, parsed_user_id) if parsed_user_id else None
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in required")
     return user

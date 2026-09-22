@@ -5,6 +5,18 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Link } from "react-router-dom";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Scatter,
+  ScatterChart,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 function formatLatency(value: number | null) {
   return value === null
@@ -149,6 +161,10 @@ export function OverviewPanel({
         </div>
         <dl className="operations-readout">
           <div>
+            <dt>Total calls</dt>
+            <dd>{(analytics?.session_count ?? 0).toLocaleString()}</dd>
+          </div>
+          <div>
             <dt>Resolution</dt>
             <dd>{displayRate(analytics?.rates?.resolution)}</dd>
           </div>
@@ -163,6 +179,10 @@ export function OverviewPanel({
           <div>
             <dt>Abandonment</dt>
             <dd>{displayRate(analytics?.rates?.abandonment)}</dd>
+          </div>
+          <div>
+            <dt>STT p90 latency</dt>
+            <dd>{formatLatency(analytics?.latency?.stt?.p90_ms ?? null)}</dd>
           </div>
         </dl>
       </section>
@@ -182,8 +202,13 @@ export function OverviewPanel({
         </span>
       </section>
       <section className="analytics-grid" aria-label="Voice impact analytics">
-        <ImpactChart latency={analytics?.latency ?? null} />
-        <OutcomeChart outcomes={analytics?.outcomes ?? null} />
+        <InterruptionResolutionChart
+          points={analytics?.interruption_resolution_points ?? []}
+        />
+        <div className="grid gap-3">
+          <TopIntentsChart intents={analytics?.intent_comparisons ?? []} />
+          <VoiceIssuesChart issues={analytics?.voice_issue_impacts ?? []} />
+        </div>
       </section>
       <section
         className="grid gap-3 md:grid-cols-4"
@@ -315,13 +340,13 @@ export function OverviewPanel({
                       className="text-sm font-semibold tabular-nums text-emerald-800 underline-offset-4 hover:underline"
                       to={`/sessions/${item.session_ids[0]}`}
                     >
-                      {displayRate(item.resolution_rate)} · {item.known_outcomes} known /{" "}
-                      {item.sessions} sessions
+                      {displayRate(item.resolution_rate)} ·{" "}
+                      {item.known_outcomes} known / {item.sessions} sessions
                     </Link>
                   ) : (
                     <b className="text-sm tabular-nums text-slate-900">
-                      {displayRate(item.resolution_rate)} · {item.known_outcomes} known /{" "}
-                      {item.sessions} sessions
+                      {displayRate(item.resolution_rate)} ·{" "}
+                      {item.known_outcomes} known / {item.sessions} sessions
                     </b>
                   )}
                 </div>
@@ -408,62 +433,228 @@ function CohortCard({
     </Card>
   );
 }
-function ImpactChart({ latency }: { latency: Analytics["latency"] | null }) {
-  const entries = Object.entries(latency ?? {}).filter(([, value]) => value);
-  const max = Math.max(...entries.map(([, value]) => value?.p95_ms ?? 0), 1);
+function ChartEmpty({ children }: { children: string }) {
+  return <p className="empty-state">{children}</p>;
+}
+
+function InterruptionResolutionChart({
+  points,
+}: {
+  points: Analytics["interruption_resolution_points"];
+}) {
   return (
-    <Card className="chart-card">
-      <p className="eyebrow">Stage latency</p>
-      <h2>p95 across captured spans</h2>
-      {entries.length ? (
-        <div className="bar-chart">
-          {entries.map(([stage, value]) => (
-            <div className="bar-row" key={stage}>
-              <span>{stage.toUpperCase()}</span>
-              <div>
-                <i
-                  style={{
-                    width: `${Math.max(8, ((value?.p95_ms ?? 0) / max) * 100)}%`,
+    <Card className="chart-card voice-scatter-card">
+      <h2>Interruption rate vs. resolution result</h2>
+      <p className="chart-description">
+        Each dot is an observed call. Green calls resolved; red calls did not.
+      </p>
+      {points.length ? (
+        <>
+          <div className="chart-legend" aria-hidden="true">
+            <span>
+              <i className="resolved" /> Resolved
+            </span>
+            <span>
+              <i className="failed" /> Not resolved
+            </span>
+          </div>
+          <div
+            className="rechart-frame"
+            role="img"
+            aria-label="Scatter plot of interruption count against binary resolution result"
+          >
+            <ResponsiveContainer width="100%" height={300}>
+              <ScatterChart
+                margin={{ top: 12, right: 18, bottom: 20, left: 0 }}
+              >
+                <CartesianGrid stroke="#dce8e5" strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="interruptions"
+                  type="number"
+                  allowDecimals={false}
+                  name="Interruptions"
+                  label={{
+                    value: "Interruptions per call",
+                    position: "insideBottom",
+                    offset: -12,
                   }}
                 />
-              </div>
-              <b>{formatLatency(value?.p95_ms ?? null)}</b>
-            </div>
-          ))}
-        </div>
+                <YAxis
+                  dataKey="resolution"
+                  type="number"
+                  domain={[-0.1, 1.1]}
+                  ticks={[0, 1]}
+                  tickFormatter={(value) =>
+                    value ? "Resolved" : "Not resolved"
+                  }
+                  width={86}
+                />
+                <Tooltip
+                  cursor={{ strokeDasharray: "3 3" }}
+                  formatter={(value, name) =>
+                    name === "resolution"
+                      ? value
+                        ? "Resolved"
+                        : "Not resolved"
+                      : value
+                  }
+                />
+                <Scatter data={points} isAnimationActive={false}>
+                  {points.map((point) => (
+                    <Cell
+                      key={point.session_id}
+                      fill={point.resolution ? "#0f9d7a" : "#e64b5d"}
+                    />
+                  ))}
+                </Scatter>
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="chart-footnote">
+            Open an example:{" "}
+            <Link to={`/sessions/${points[0].session_id}`}>
+              {points[0].intent}
+            </Link>
+          </p>
+        </>
       ) : (
-        <p className="empty-state">
-          Latency bars appear after spans are captured.
-        </p>
+        <ChartEmpty>
+          Resolution points appear after sessions report outcomes.
+        </ChartEmpty>
       )}
     </Card>
   );
 }
-function OutcomeChart({
-  outcomes,
+
+function TopIntentsChart({
+  intents,
 }: {
-  outcomes: Record<string, number> | null;
+  intents: Analytics["intent_comparisons"];
 }) {
-  const entries = Object.entries(outcomes ?? {});
-  const total = entries.reduce((sum, [, count]) => sum + count, 0);
+  const observed = intents
+    .filter((item) => item.resolution_rate !== null)
+    .slice(0, 5);
+  const data = observed.map((item) => ({
+    ...item,
+    percent: Math.round((item.resolution_rate ?? 0) * 100),
+  }));
   return (
-    <Card className="chart-card">
-      <p className="eyebrow">Session outcomes</p>
-      <h2>Captured result mix</h2>
-      {total ? (
-        <div className="outcome-list">
-          {entries.map(([outcome, count]) => (
-            <div key={outcome}>
-              <span>{outcome}</span>
-              <b>{count}</b>
-              <i style={{ width: `${(count / total) * 100}%` }} />
-            </div>
-          ))}
-        </div>
+    <Card className="chart-card compact-chart-card">
+      <h2>Top intents by resolution rate</h2>
+      <p className="chart-description">
+        Observed outcomes, ranked across captured intents.
+      </p>
+      {data.length ? (
+        <>
+          <div
+            className="rechart-frame"
+            role="img"
+            aria-label="Bar chart of intent resolution rates"
+          >
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart
+                data={data}
+                layout="vertical"
+                margin={{ top: 6, right: 22, bottom: 4, left: 8 }}
+              >
+                <CartesianGrid stroke="#e5eeec" horizontal={false} />
+                <XAxis type="number" domain={[0, 100]} unit="%" />
+                <YAxis
+                  type="category"
+                  dataKey="label"
+                  width={120}
+                  tick={{ fontSize: 11 }}
+                />
+                <Tooltip formatter={(value) => `${value}%`} />
+                <Bar
+                  dataKey="percent"
+                  fill="#0f9d7a"
+                  radius={[0, 4, 4, 0]}
+                  isAnimationActive={false}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="chart-links" aria-label="Intent evidence links">
+            {data.map((item) => (
+              <Link
+                key={item.label}
+                to={`/intents/${encodeURIComponent(item.label)}`}
+              >
+                {item.label}: {item.percent}%
+              </Link>
+            ))}
+          </div>
+        </>
       ) : (
-        <p className="empty-state">
-          Outcome mix appears after completed sessions are captured.
-        </p>
+        <ChartEmpty>
+          Intent rankings appear after outcomes are observed.
+        </ChartEmpty>
+      )}
+    </Card>
+  );
+}
+
+function VoiceIssuesChart({
+  issues,
+}: {
+  issues: Analytics["voice_issue_impacts"];
+}) {
+  const data = issues.map((item) => ({
+    ...item,
+    impact: Math.abs(item.impact_percentage_points),
+  }));
+  return (
+    <Card className="chart-card compact-chart-card">
+      <h2>Top voice issues by impact</h2>
+      <p className="chart-description">
+        Difference in resolution rate versus the observed baseline.
+      </p>
+      {data.length ? (
+        <>
+          <div
+            className="rechart-frame"
+            role="img"
+            aria-label="Bar chart of voice issue impact on resolution rate"
+          >
+            <ResponsiveContainer width="100%" height={190}>
+              <BarChart
+                data={data}
+                layout="vertical"
+                margin={{ top: 6, right: 24, bottom: 4, left: 8 }}
+              >
+                <CartesianGrid stroke="#f1dfe2" horizontal={false} />
+                <XAxis type="number" unit=" pp" />
+                <YAxis
+                  type="category"
+                  dataKey="label"
+                  width={132}
+                  tick={{ fontSize: 11 }}
+                />
+                <Tooltip formatter={(value) => `${value} percentage points`} />
+                <Bar
+                  dataKey="impact"
+                  fill="#e64b5d"
+                  radius={[0, 4, 4, 0]}
+                  isAnimationActive={false}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="chart-links" aria-label="Voice issue evidence links">
+            {data.map((item) =>
+              item.session_ids[0] ? (
+                <Link key={item.key} to={`/sessions/${item.session_ids[0]}`}>
+                  {item.label}: {item.impact_percentage_points} pp
+                </Link>
+              ) : null,
+            )}
+          </div>
+        </>
+      ) : (
+        <ChartEmpty>
+          At least five affected and baseline calls are required per issue.
+        </ChartEmpty>
       )}
     </Card>
   );

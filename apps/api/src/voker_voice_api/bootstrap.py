@@ -188,7 +188,7 @@ def seed_demo_sessions(db: Session, *, count: int = 20) -> int:
             source=("vapi" if index % 2 else "retell"),
             status="failed" if has_error else "completed",
             outcome=outcome,
-            outcome_source="demo_seed",
+            outcome_source="explicit",
             started_at=started_at,
             ended_at=started_at + timedelta(seconds=208),
             metadata_={
@@ -221,7 +221,7 @@ def seed_demo_sessions(db: Session, *, count: int = 20) -> int:
         )
         db.add_all((customer_turn, agent_turn))
         db.flush()
-        stt_duration = 1820 if slow_stt else 420 + (index * 35)
+        stt_duration = 1820 if slow_stt else 420 + ((index % 3) * 30)
         stt_span = Span(
             session_id=session.id,
             turn_id=customer_turn.id,

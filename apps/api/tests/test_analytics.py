@@ -170,6 +170,16 @@ def test_analytics_uses_filtered_aggregates_and_links_representative_sessions() 
                     duration_ms=250 + index,
                     attributes={},
                 ),
+                Span(
+                    session_id=session.id,
+                    external_span_id=f"stt-span-{index}",
+                    name="stt",
+                    kind="stt",
+                    status="ok",
+                    started_at=session.started_at,
+                    duration_ms=400 + index,
+                    attributes={},
+                ),
                 UsageRecord(
                     session_id=session.id,
                     provider="openai",
@@ -241,6 +251,13 @@ def test_analytics_uses_filtered_aggregates_and_links_representative_sessions() 
     assert result["voice_impact_cohorts"]["high_interruption"]["sample_size"] == 6
     assert len(result["voice_impact_cohorts"]["dead_air"]["session_ids"]) == 6
     assert result["latency"]["llm"]["sample_size"] == 6
+    assert result["latency"]["llm"]["p90_ms"] == 254
+    assert result["voice_impact_cohorts"]["fast_stt"]["sample_size"] == 6
+    assert result["volume_trend"] == [{"date": "2026-09-21", "sessions": 6}]
+    assert result["intent_comparisons"][0]["label"] == "Unclassified"
+    assert result["intent_comparisons"][0]["resolution_rate"] == 4 / 6
+    assert len(result["interruption_resolution_points"]) == 6
+    assert result["interruption_resolution_points"][0]["session_id"] == str(sessions[0].id)
     assert result["tool_failure_count"] == 1
     assert result["insights"][0]["session_ids"] == [str(sessions[4].id)]
     assert result["comparisons"]["agents"][0]["label"] == "Support"

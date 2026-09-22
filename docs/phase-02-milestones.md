@@ -765,3 +765,18 @@ Phase 02 is complete when a developer can:
 
 Formal load, restart, network-partition, backup/restore, and hosted-acceptance programs remain
 outside Phase 02 unless later product requirements explicitly add them.
+
+## 19. UI functional acceptance status — 2026-09-22
+
+Requested initial-release UI work is **100% complete (22/22 acceptance checks)**.
+
+- [x] All displayed primary navigation destinations are functional.
+- [x] Intents and agent list/detail routes are data-backed and evidence-linked.
+- [x] Dashboard includes the required Recharts interruption scatter, intent ranking, and voice-issue impact charts.
+- [x] Every session detail includes an interactive conversation timeline.
+- [x] Playback, transcript, analysis, trace/events, setup, settings, key lifecycle, and authentication flows pass browser acceptance.
+- [x] Desktop, tablet, mobile, and narrow-mobile routes have no document-level horizontal overflow.
+- [x] Twenty desktop/mobile axe scans pass WCAG 2.0/2.1 A and AA rules with zero remaining violations.
+- [x] Twenty-two desktop/mobile screenshots are saved for review.
+
+Detailed evidence, the route/interaction matrix, known external-dependency boundaries, and the screenshot index are in [`docs/ui-review/playwright-audit.md`](ui-review/playwright-audit.md).

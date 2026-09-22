@@ -68,7 +68,9 @@ function ConnectorSetup({
   setup?: ProjectSetup;
 }) {
   const queryClient = useQueryClient();
-  const current = setup?.integrations.find((item) => item.provider === provider);
+  const current = setup?.integrations.find(
+    (item) => item.provider === provider,
+  );
   const [apiKey, setApiKey] = useState("");
   const [publicBaseUrl, setPublicBaseUrl] = useState(apiBaseUrl);
   const [integrationId, setIntegrationId] = useState(current?.id ?? "");
@@ -140,15 +142,17 @@ function ConnectorSetup({
 
   const update = useMutation({
     mutationFn: (values: { enabled?: boolean; forwarding_enabled?: boolean }) =>
-      request(
-        `/api/projects/${projectSlug}/integrations/${current?.id}`,
-        { method: "PATCH", body: JSON.stringify(values) },
-      ),
+      request(`/api/projects/${projectSlug}/integrations/${current?.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(values),
+      }),
     onSuccess: () => void refreshSetup(),
   });
 
-  const pending = connect.isPending || configure.isPending || loadResources.isPending;
-  const error = connect.error ?? configure.error ?? loadResources.error ?? update.error;
+  const pending =
+    connect.isPending || configure.isPending || loadResources.isPending;
+  const error =
+    connect.error ?? configure.error ?? loadResources.error ?? update.error;
 
   return (
     <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
@@ -256,18 +260,22 @@ function ConnectorSetup({
               autoComplete="off"
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
-              placeholder={provider === "vapi" ? "Vapi private key" : "Retell API key"}
+              placeholder={
+                provider === "vapi" ? "Vapi private key" : "Retell API key"
+              }
             />
             <p className="text-xs leading-5 text-slate-500">
-              Sent only to the Voker API, validated with {provider === "vapi" ? "Vapi" : "Retell"},
-              then stored encrypted.
+              Sent only to the Voker API, validated with{" "}
+              {provider === "vapi" ? "Vapi" : "Retell"}, then stored encrypted.
             </p>
           </div>
           <Button
             disabled={!apiKey || connect.isPending}
             onClick={() => connect.mutate()}
           >
-            {connect.isPending ? <LoaderCircle className="animate-spin" /> : null}
+            {connect.isPending ? (
+              <LoaderCircle className="animate-spin" />
+            ) : null}
             Validate and continue
           </Button>
         </div>
@@ -300,8 +308,12 @@ function ConnectorSetup({
                   <span>
                     <b className="block text-slate-900">{resource.name}</b>
                     <span className="text-xs text-slate-500">
-                      {resource.version ? `Version ${resource.version}` : "Version unknown"}
-                      {resource.existing_webhook_url ? " · existing webhook preserved" : ""}
+                      {resource.version
+                        ? `Version ${resource.version}`
+                        : "Version unknown"}
+                      {resource.existing_webhook_url
+                        ? " · existing webhook preserved"
+                        : ""}
                     </span>
                   </span>
                 </label>
@@ -309,7 +321,9 @@ function ConnectorSetup({
             </div>
           </fieldset>
           <div className="grid gap-2">
-            <Label htmlFor={`${provider}-public-url`}>Public Voker API URL</Label>
+            <Label htmlFor={`${provider}-public-url`}>
+              Public Voker API URL
+            </Label>
             <Input
               id={`${provider}-public-url`}
               type="url"
@@ -318,23 +332,29 @@ function ConnectorSetup({
               placeholder="https://voice.example.com"
             />
             <p className="text-xs text-slate-500">
-              The provider must be able to reach this URL. Existing webhook destinations are
-              forwarded automatically.
+              The provider must be able to reach this URL. Existing webhook
+              destinations are forwarded automatically.
             </p>
           </div>
           <Button
             className="w-fit"
-            disabled={!selectedIds.length || !publicBaseUrl || configure.isPending}
+            disabled={
+              !selectedIds.length || !publicBaseUrl || configure.isPending
+            }
             onClick={() => configure.mutate()}
           >
-            {configure.isPending ? <LoaderCircle className="animate-spin" /> : null}
+            {configure.isPending ? (
+              <LoaderCircle className="animate-spin" />
+            ) : null}
             Configure webhook
           </Button>
         </div>
       ) : null}
 
       {pending && !connect.isPending && !configure.isPending ? (
-        <p className="mt-3 text-sm text-slate-600">Loading provider resources…</p>
+        <p className="mt-3 text-sm text-slate-600">
+          Loading provider resources…
+        </p>
       ) : null}
       {error ? (
         <p className="mt-3 text-sm text-red-700" role="alert">
@@ -371,6 +391,7 @@ export function SetupPage() {
     environmentItems[0]?.slug ??
     environmentChoice;
   const [path, setPath] = useState("sdk");
+  const [copied, setCopied] = useState(false);
   const code = snippet(path, environment);
 
   return (
@@ -380,7 +401,7 @@ export function SetupPage() {
           <h1 className="max-w-3xl text-4xl font-semibold tracking-[-.04em] text-[#173c36]">
             Connect a voice pipeline and verify what Voker observes.
           </h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-[#607a76]">
+          <p className="mt-3 max-w-2xl text-base leading-7 text-[#506a65]">
             Choose the integration boundary you own. Provider data that has not
             arrived is shown as unknown, never as a failure.
           </p>
@@ -459,7 +480,10 @@ export function SetupPage() {
 
       <Tabs
         value={path}
-        onValueChange={setPath}
+        onValueChange={(value) => {
+          setPath(value);
+          setCopied(false);
+        }}
         className="rounded-xl border border-slate-200 bg-white p-5"
       >
         <TabsList
@@ -511,12 +535,19 @@ export function SetupPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => void navigator.clipboard?.writeText(code)}
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(code);
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1800);
+                  }}
                 >
-                  <Copy size={13} /> Copy
+                  <Copy size={13} /> {copied ? "Copied" : "Copy"}
                 </Button>
               </div>
-              <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-xs leading-6 text-slate-100">
+              <pre
+                tabIndex={0}
+                className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-xs leading-6 text-slate-100"
+              >
                 {code}
               </pre>
             </div>

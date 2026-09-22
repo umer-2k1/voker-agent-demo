@@ -129,6 +129,7 @@ function WaveformPlayer({
         className="waveform-track"
         ref={containerRef}
         aria-label="Call recording waveform"
+        role="img"
       />
       <output className="recording-clock" aria-live="polite">
         {state === "loading"
@@ -391,19 +392,45 @@ function TracePanelContent({
     corrections: 0,
     abandonment: 0,
   };
+  const sessionDurationSeconds = Math.max(
+    (trace.session.duration_ms ?? 1) / 1000,
+    1,
+  );
+  const observedTurnGaps = trace.turns.slice(0, -1).flatMap((turn, index) => {
+    if (!turn.ended_at) return [];
+    const next = trace.turns[index + 1];
+    const start = Math.max(
+      0,
+      (new Date(turn.ended_at).getTime() -
+        new Date(trace.session.started_at).getTime()) /
+        1000,
+    );
+    const end = Math.max(
+      start,
+      (new Date(next.started_at).getTime() -
+        new Date(trace.session.started_at).getTime()) /
+        1000,
+    );
+    return end - start > 2.5 ? [{ start, end, key: `${turn.id}-${next.id}` }] : [];
+  });
+
+  function seekToOffset(seconds: number, label: string) {
+    if (!activeRecording) return;
+    setPlayheadSeconds(seconds);
+    setSeekNotice(`Seeking to ${label} at ${formatClock(seconds)}.`);
+    if (waveformRef.current) {
+      waveformRef.current.setTime(seconds);
+      void waveformRef.current.play();
+    } else {
+      pendingSeekRef.current = seconds;
+      setActiveTab("playback");
+    }
+  }
 
   function seekToTurn(turn: Trace["turns"][number]) {
     if (!activeRecording) return;
     const offset = turnOffsetSeconds(turn, trace);
-    setPlayheadSeconds(offset);
-    setSeekNotice(`Seeking to ${turn.speaker} at ${formatClock(offset)}.`);
-    if (waveformRef.current) {
-      waveformRef.current.setTime(offset);
-      void waveformRef.current.play();
-    } else {
-      pendingSeekRef.current = offset;
-      setActiveTab("playback");
-    }
+    seekToOffset(offset, turn.speaker);
   }
 
   function revealEvidence(target: {
@@ -520,10 +547,7 @@ function TracePanelContent({
                     1000,
                 )
               : start + 3;
-            const total = Math.max(
-              (trace.session.duration_ms ?? 1) / 1000,
-              end,
-            );
+              const total = Math.max(sessionDurationSeconds, end);
             return (
               <button
                 key={turn.id}
@@ -546,10 +570,7 @@ function TracePanelContent({
                 event.event_type === "voice.dead-air",
             )
             .map((event) => {
-              const total = Math.max(
-                (trace.session.duration_ms ?? 1) / 1000,
-                1,
-              );
+              const total = sessionDurationSeconds;
               const start = Math.max(
                 0,
                 (new Date(event.occurred_at).getTime() -
@@ -578,8 +599,22 @@ function TracePanelContent({
                     })
                   }
                 />
-              );
-            })}
+            );
+          })}
+          {observedTurnGaps.map((gap) => (
+            <button
+              aria-label={`Seek to observed dead air at ${formatClock(gap.start)}`}
+              className="timeline-segment dead-air"
+              disabled={!activeRecording}
+              key={gap.key}
+              onClick={() => seekToOffset(gap.start, "observed dead air")}
+              style={{
+                left: `${Math.min(99, (gap.start / sessionDurationSeconds) * 100)}%`,
+                width: `${Math.max(1.2, ((gap.end - gap.start) / sessionDurationSeconds) * 100)}%`,
+              }}
+              title={`Observed dead air at ${formatClock(gap.start)}`}
+            />
+          ))}
         </div>
         <div className="conversation-timeline-scale" aria-hidden="true">
           <span>0:00</span>

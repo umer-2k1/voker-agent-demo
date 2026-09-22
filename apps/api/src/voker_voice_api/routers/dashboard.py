@@ -793,17 +793,48 @@ def analytics_overview(
         .group_by(Event.session_id)
         .subquery("event_metrics")
     )
+    stt_span_metrics = (
+        select(
+            Span.session_id.label("session_id"),
+            func.max(Span.duration_ms).label("stt_duration_ms"),
+        )
+        .join(filtered, Span.session_id == filtered.c.id)
+        .where(Span.kind == "stt", Span.duration_ms.is_not(None))
+        .group_by(Span.session_id)
+        .subquery("stt_span_metrics")
+    )
     cohort_rows = (
         select(
             filtered.c.id.label("id"),
             filtered.c.outcome.label("outcome"),
             func.coalesce(event_metrics.c.interruptions, 0).label("interruptions"),
             func.coalesce(event_metrics.c.dead_air, 0).label("dead_air"),
-            event_metrics.c.stt_duration_ms.label("stt_duration_ms"),
+            func.coalesce(
+                stt_span_metrics.c.stt_duration_ms,
+                event_metrics.c.stt_duration_ms,
+            ).label("stt_duration_ms"),
         )
         .outerjoin(event_metrics, event_metrics.c.session_id == filtered.c.id)
+        .outerjoin(stt_span_metrics, stt_span_metrics.c.session_id == filtered.c.id)
         .subquery("cohort_rows")
     )
+
+    # Provider adapters may express dead air as an explicit event, while custom
+    # and LiveKit traces can expose it as a measured gap between persisted
+    # turns. Treat a gap above 2.5 seconds as observed dead air, using the same
+    # threshold as the deterministic response-gap analyzer.
+    dead_air_gap_sessions: set[UUID] = set()
+    previous_turn_end: dict[UUID, datetime] = {}
+    for session_id, turn_started_at, turn_ended_at in db.execute(
+        select(Turn.session_id, Turn.started_at, Turn.ended_at)
+        .join(filtered, Turn.session_id == filtered.c.id)
+        .order_by(Turn.session_id, Turn.started_at, Turn.sequence)
+        .limit(50_000)
+    ):
+        prior_end = previous_turn_end.get(session_id)
+        if prior_end is not None and (turn_started_at - prior_end).total_seconds() > 2.5:
+            dead_air_gap_sessions.add(session_id)
+        previous_turn_end[session_id] = turn_ended_at or turn_started_at
 
     def cohort(predicate: Any) -> dict[str, Any] | None:
         observed = cohort_rows.c.outcome.is_not(None) & predicate
@@ -834,13 +865,20 @@ def analytics_overview(
             "session_ids": links,
         }
 
+    dead_air_predicate = or_(
+        cohort_rows.c.dead_air >= 1,
+        cohort_rows.c.id.in_(dead_air_gap_sessions),
+    )
+    no_dead_air_predicate = (cohort_rows.c.dead_air == 0) & cohort_rows.c.id.not_in(
+        dead_air_gap_sessions
+    )
     voice_cohorts = {
         "high_interruption": cohort(cohort_rows.c.interruptions >= 3),
         "normal_interruption": cohort(cohort_rows.c.interruptions <= 1),
         "slow_stt": cohort(cohort_rows.c.stt_duration_ms > 1200),
         "fast_stt": cohort(cohort_rows.c.stt_duration_ms <= 500),
-        "dead_air": cohort(cohort_rows.c.dead_air >= 1),
-        "no_dead_air": cohort(cohort_rows.c.dead_air == 0),
+        "dead_air": cohort(dead_air_predicate),
+        "no_dead_air": cohort(no_dead_air_predicate),
     }
 
     # The dashboard visualizations remain evidence-bounded: every point and
@@ -1390,7 +1428,12 @@ def get_session_trace(
         "interruptions": ("voice.interruption",),
         "talk_over": ("voice.talk_over",),
         "dead_air": ("voice.dead_air",),
-        "corrections": ("correction.started", "correction.completed"),
+        "corrections": (
+            "correction.started",
+            "correction.completed",
+            "correction.detected",
+            "correction.transcript",
+        ),
         "abandonment": ("abandonment.detected", "turn.abandoned"),
     }
     voice_behavior = {

@@ -432,6 +432,8 @@ def evaluate_session(
         if session.outcome is None and result.outcome != "uncertain":
             session.outcome = result.outcome
             session.outcome_source = "semantic"
+        if result.intent and not session.metadata_.get("intent"):
+            session.metadata_ = {**session.metadata_, "intent": result.intent}
         analysis_run.status = "completed"
         analysis_run.completed_at = datetime.now(UTC)
         analysis_run.result = {

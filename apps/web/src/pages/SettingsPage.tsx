@@ -27,7 +27,12 @@ type ApiKey = {
   environment: string;
   revoked_at: string | null;
 };
-const createKeySchema = z.object({ label: z.string().trim().min(2, "Use at least 2 characters for the key label.") });
+const createKeySchema = z.object({
+  label: z
+    .string()
+    .trim()
+    .min(2, "Use at least 2 characters for the key label."),
+});
 
 function initials(account: Account) {
   return (account.display_name?.trim() || account.email)
@@ -129,7 +134,7 @@ export function SettingsPage({ account }: { account: Account }) {
           <h1 className="mt-2 max-w-none text-4xl font-semibold tracking-[-.05em] text-[#173c36] md:text-5xl">
             Manage your workspace
           </h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-[#607a76]">
+          <p className="mt-3 max-w-2xl text-base leading-7 text-[#506a65]">
             Account identity and project ingest access, kept together in one
             place.
           </p>
@@ -175,7 +180,7 @@ export function SettingsPage({ account }: { account: Account }) {
           Profile
         </a>
         <a
-          className="border-b-2 border-transparent pb-3 text-sm font-bold text-[#718882] hover:text-[#004d43]"
+          className="border-b-2 border-transparent pb-3 text-sm font-bold text-[#526b67] hover:text-[#004d43]"
           href="#api-keys"
         >
           API keys
@@ -208,7 +213,7 @@ export function SettingsPage({ account }: { account: Account }) {
               <h3 className="truncate text-base font-bold text-[#254841]">
                 {account.display_name ?? "Google account"}
               </h3>
-              <p className="mt-1 truncate text-sm text-[#607a76]">
+              <p className="mt-1 truncate text-sm text-[#506a65]">
                 {account.email}
               </p>
               <small className="mt-2 block text-xs font-bold text-[#267469]">
@@ -216,7 +221,7 @@ export function SettingsPage({ account }: { account: Account }) {
               </small>
             </div>
           </div>
-          <div className="mt-6 border-t border-[#e7eeec] pt-5 text-sm leading-6 text-[#718882]">
+          <div className="mt-6 border-t border-[#e7eeec] pt-5 text-sm leading-6 text-[#526b67]">
             <b className="block text-[#254841]">
               Your identity is managed by Google.
             </b>
@@ -238,12 +243,12 @@ export function SettingsPage({ account }: { account: Account }) {
               <h2 className="mt-2 text-2xl font-semibold tracking-[-.03em] text-[#173c36]">
                 Project API keys
               </h2>
-              <p className="mt-2 max-w-lg text-sm leading-6 text-[#718882]">
+              <p className="mt-2 max-w-lg text-sm leading-6 text-[#526b67]">
                 Create a scoped key for an agent. The complete secret is shown
                 once.
               </p>
             </div>
-            <span className="w-fit rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-[#607a76]">
+            <span className="w-fit rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-[#506a65]">
               {keys.data?.items.length ?? 0} keys
             </span>
           </div>
@@ -285,7 +290,10 @@ export function SettingsPage({ account }: { account: Account }) {
             </form>
           </Form>
           {createKey.isError ? (
-            <p className="mt-3 text-sm font-semibold text-[#9e3325]" role="alert">
+            <p
+              className="mt-3 text-sm font-semibold text-[#9e3325]"
+              role="alert"
+            >
               Could not create the key for this project and environment.
             </p>
           ) : null}
@@ -376,7 +384,7 @@ export function SettingsPage({ account }: { account: Account }) {
                 </div>
               ))
             ) : !keys.isPending ? (
-              <div className="grid gap-1 px-6 py-9 text-center text-sm text-[#718882]">
+              <div className="grid gap-1 px-6 py-9 text-center text-sm text-[#526b67]">
                 <b className="text-[#254841]">No API keys yet</b>
                 <span>
                   Create a key above when you are ready to connect an agent.

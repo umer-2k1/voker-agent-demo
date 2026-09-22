@@ -332,7 +332,7 @@ export function OverviewPanel({
                   key={`${item.group}-${item.label}`}
                 >
                   <span className="truncate text-sm text-slate-700">
-                    <small className="mr-1 text-slate-400">{item.group}</small>
+                    <small className="mr-1 text-slate-600">{item.group}</small>
                     {item.label}
                   </span>
                   {item.session_ids[0] ? (

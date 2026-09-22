@@ -4,6 +4,7 @@ Status: complete
 Audience: product, backend, frontend, SDK, and integration engineers
 Source of truth: [`voker-voice.md`](./voker-voice.md)
 Related delivery record: [`milestones.md`](./milestones.md)
+Completion audit: [`phase-02-completion-audit.md`](./phase-02-completion-audit.md)
 
 ## Implementation status
 
@@ -15,7 +16,7 @@ Last updated: 2026-09-22
 | 2.2 Generic Python SDK | Complete | 100% | Automatic sync/async nesting, task context propagation, turns, semantic agents, handoffs, outcomes, MCP errors, cancellation/timeouts, capture controls, redaction hooks, event bounds, async cleanup, bounded queue/outage behavior, diagnostics, and retry jitter verified. |
 | 2.3 LiveKit | Complete | 100% | One-call owned lifecycle, public LiveKit 1.8 event mappings, participant/room metadata, turns, agent runs/handoffs, STT/LLM/tools/TTS/playback, evidence-backed overlap/interruption, provider metrics/errors, fail-open behavior, canonical ingestion, and dashboard trace contract verified. |
 | 2.4 LangGraph and multi-agent | Complete | 100% | Owned or active-session wrapper, graph/node/LLM/tool spans, canonical retries, public interrupt/resume callbacks, error classification, parallel nesting, semantic agent runs, explicit-only handoffs, and context propagation verified against LangGraph 1.2.11. |
-| 2.5 Evidence-backed intelligence | Complete | 100% | Deterministic rules cover recorded failures, retries, latency, voice behavior, handoffs, and incomplete traces with exact evidence. Semantic v2 validates same-session evidence, redacts and bounds input, versions immutable runs, stores evaluator metrics, and exposes disabled/failed/insufficient states. |
+| 2.5 Evidence-backed intelligence | Complete | 100% | Deterministic rules cover recorded failures, retries, latency, voice behavior, handoffs, and incomplete traces with exact evidence. Semantic v3 validates same-session evidence, redacts and bounds input, retries provider/schema failures, versions immutable runs, stores evaluator metrics, and exposes disabled/failed/insufficient states. |
 | 2.6 Trace dashboard | Complete | 100% | Nested canonical waterfall, real tab panels, transcript/recording synchronization, evidence and error navigation, certainty-aware findings, analysis states, usage/cost/outcome/voice summaries, advanced server filters, shareable URLs, outcome-led overview, setup paths, and bounded trace queries verified. |
 | 2.7 Vapi | Complete | 100% | Encrypted credential storage, live API validation/resource selection, Voker-agent mapping, authenticated webhook configuration, durable/deduplicated receipts, asynchronous rich canonical normalization, existing-destination forwarding with retry/disable state, dashboard health, and controlled full-call fixtures verified. |
 | 2.8 Retell | Complete | 100% | Shared managed workflow, agent selection/mapping, webhook registration, official raw-body timestamped HMAC verification, durable deferred normalization, partial/later delivery reconciliation, rich canonical call data, shared dashboard health, and controlled full-call fixtures verified. |
@@ -29,19 +30,25 @@ Remaining Phase 02 work: **0%**.
 ### Current checkpoint
 
 - Milestones 2.1 through 2.9 are complete.
-- LiveKit/provider credentials are not configured in this workspace, so Milestone 2.3 was
-  verified with LiveKit's installed public event models and a deterministic full-call flow rather
-  than a hosted-provider acceptance call. Hosted acceptance is explicitly outside Phase 02.
+- Read-only development checks confirmed authentication for the configured LiveKit, Vapi, Retell,
+  and OpenRouter clients without exposing secrets. LiveKit behavior is additionally verified against
+  its installed public event models and a deterministic full-call flow. Hosted acceptance is
+  explicitly outside Phase 02.
 - Vapi and Retell hosted calls were not required for this initial-release phase. Their complete-call,
   duplicate-delivery, later-analysis, missing-data, and forwarding behavior is verified with
   deterministic provider-contract fixtures and mocked official API responses.
+- The completion audit corrected unknown-outcome analytics, comparison evidence links, bounded
+  aggregation, evaluator compatibility/versioning, LiveKit recordings, session outcome preservation,
+  authorized setup/settings selection, onboarding snippets, zero-cost normalization, and expanded
+  mutation-role coverage.
 - The minimum initial-release safeguards and full Phase 02 quality gate are complete.
 
 ### Current verification state
 
-- API tests: 59 passing, including organization/project isolation, mutation roles, scoped streams,
+- API tests: 63 collected/passing in the full suite, including organization/project isolation,
+  mutation roles, scoped streams,
   aggregate reconciliation, cost-rate-card, recording-state, and provider contract scenarios.
-- Combined Python suite: 95 tests passing across the API and SDK.
+- Combined Python suite: 99 tests passing across the API and SDK.
 - Shared canonical fixture validation: passing against JSON Schema and Pydantic.
 - Scoped-trace PostgreSQL migration: upgrade, downgrade, and re-upgrade verified on PostgreSQL 16.
 - Python SDK: Ruff, strict MyPy, and focused tests passing.
@@ -49,17 +56,19 @@ Remaining Phase 02 work: **0%**.
   behavior, ingestion, nesting, provider errors, and dashboard trace payload passing.
 - LangGraph adapter: Ruff, strict MyPy, real graph node/parallel/interrupt/resume/error scenarios,
   canonical validation, and session propagation passing.
-- Intelligence: deterministic and semantic rule tests, evidence validation, redaction, failure
-  states, rerun versioning, evaluator metrics, and the PostgreSQL upgrade/downgrade cycle pass.
+- Intelligence: deterministic and semantic rule tests, evidence validation, redaction, bounded
+  retry, failure states, rerun versioning, evaluator metrics, and configured-model development
+  validation pass.
 - Dashboard: frontend tests/build/lint pass; canonical trace payloads expose bounded events, agent
   identity, capture state, usage/cost, voice behavior, analysis history, and exact evidence targets.
 - Managed connectors: encrypted credentials, provider validation and selection, authenticated
   durable receipts, rich canonical normalization, duplicate/later-event handling, forwarding state,
   and setup health UI pass focused and full API suites.
 - Analytics, costs, and recordings: bounded aggregate queries, shareable environment/time filters,
-  evidence-linked comparisons/cohorts, missing-data-safe latency, exact-versus-estimated cost,
-  usage units, recording validation/expiry, and authenticated playback pass API and web suites.
-- Frontend: 6 tests pass, the production build succeeds, and ESLint reports no errors.
+  unknown-safe evidence-linked comparisons/cohorts, missing-data-safe latency,
+  exact-versus-estimated cost, usage units, LiveKit/external recording validation/expiry, and
+  authenticated playback pass API and web suites.
+- Frontend: 8 tests pass, the production build succeeds, and ESLint reports no errors.
 - Repository quality gate: Ruff and strict MyPy pass across all Python source; frontend tests,
   production build, and lint pass. Four pre-existing Fast Refresh advisories remain warnings only.
 
@@ -129,10 +138,10 @@ integration functions. This is feature verification, not a hosted acceptance pro
 - The dashboard consumes canonical records rather than provider-specific payload structures.
 - Each milestone must finish with focused automated tests and a working development flow.
 
-## 4. Current baseline
+## 4. Phase-start baseline (historical)
 
-The current implementation contains useful foundations but should be treated as an internal
-prototype:
+At the start of Phase 02, the implementation contained useful foundations but was treated as an
+internal prototype:
 
 - FastAPI, PostgreSQL, Alembic, React/Vite, and Python SDK packages exist.
 - Canonical event ingestion, database jobs, session queries, basic findings, and dashboard views
@@ -141,9 +150,9 @@ prototype:
 - Initial LiveKit, LangGraph, Vapi, and Retell mapping code exists.
 - Google authentication, ingest-key management, Cloudinary playback, and basic analytics exist.
 
-The primary remaining work is correctness and functional completeness. Several earlier milestone
-labels describe scaffolding as a complete vertical slice even though the documented exit criteria
-are not yet satisfied.
+The phase closed the original correctness and functional-completeness gaps. The milestone evidence
+below records the completed work; the independent completion mapping is in
+[`phase-02-completion-audit.md`](./phase-02-completion-audit.md).
 
 ## 5. Milestone 2.1 — Canonical trace correctness
 

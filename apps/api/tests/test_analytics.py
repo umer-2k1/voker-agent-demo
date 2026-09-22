@@ -238,6 +238,8 @@ def test_analytics_uses_filtered_aggregates_and_links_representative_sessions() 
     assert result["tool_failure_count"] == 1
     assert result["insights"][0]["session_ids"] == [str(sessions[4].id)]
     assert result["comparisons"]["agents"][0]["label"] == "Support"
+    assert result["comparisons"]["agents"][0]["known_outcomes"] == 6
+    assert result["comparisons"]["agents"][0]["session_ids"]
     assert result["comparisons"]["versions"][0]["label"] == "3"
     assert {item["label"] for item in result["comparisons"]["platforms"]} == {
         "sdk",
@@ -245,4 +247,5 @@ def test_analytics_uses_filtered_aggregates_and_links_representative_sessions() 
     }
     assert result["comparisons"]["providers"][0]["label"] == "openai"
     assert result["comparisons"]["models"][0]["label"] == "gpt-4o-mini"
+    assert result["comparisons"]["models"][0]["session_ids"]
     assert result["outcome_sources"] == {"explicit": 3, "inferred": 3, "unknown": 0}

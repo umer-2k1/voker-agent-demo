@@ -9,6 +9,7 @@ from voker_voice_api.database import get_db
 from voker_voice_api.main import app
 from voker_voice_api.models import Recording
 from voker_voice_api.recordings import (
+    SUPPORTED_RECORDING_SOURCES,
     SUPPORTED_RECORDING_STATES,
     cloudinary_playback_url,
     external_playback_url,
@@ -65,6 +66,28 @@ def test_recording_states_and_default_retention_are_explicit(monkeypatch) -> Non
             asset_reference=("https://media.example/call.wav" if status == "available" else None),
         )
 
+    for source in SUPPORTED_RECORDING_SOURCES:
+        validate_recording_metadata(
+            source=source,
+            status="available",
+            asset_reference=(
+                "https://media.example/call.wav"
+                if source in {"livekit", "vapi", "retell", "external"}
+                else "private/call"
+            ),
+        )
+
+    try:
+        validate_recording_metadata(
+            source="unsupported",
+            status="available",
+            asset_reference="private/call",
+        )
+    except ValueError as error:
+        assert "Unsupported recording source" in str(error)
+    else:
+        raise AssertionError("unsupported recording sources must be rejected")
+
     assert recording_expiry(None, settings, now=started_at) == started_at + timedelta(days=14)
 
 
@@ -75,6 +98,13 @@ def test_external_recording_playback_requires_https() -> None:
         status="available",
     )
     assert external_playback_url(available) == "https://media.example/private-call.wav"
+
+    livekit = Recording(
+        source="livekit",
+        asset_reference="https://media.example/livekit-egress.ogg",
+        status="available",
+    )
+    assert external_playback_url(livekit) == "https://media.example/livekit-egress.ogg"
 
     unavailable = Recording(
         source="vapi", asset_reference="http://media.example/call.mp3", status="available"

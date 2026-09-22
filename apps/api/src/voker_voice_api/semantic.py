@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from voker_voice_api.analysis_versions import ANALYSIS_SCHEMA_VERSION, SEMANTIC_PROMPT_VERSION
 from voker_voice_api.config import get_settings
 from voker_voice_api.models import (
     AnalysisRun,
@@ -25,10 +26,11 @@ from voker_voice_api.models import (
 )
 from voker_voice_api.models import Session as VoiceSession
 
-PROMPT_VERSION = "semantic-v2"
-SCHEMA_VERSION = "2"
+PROMPT_VERSION = SEMANTIC_PROMPT_VERSION
+SCHEMA_VERSION = ANALYSIS_SCHEMA_VERSION
 MAX_EVIDENCE_ITEMS = 100
 MAX_EVIDENCE_CHARS = 48_000
+MAX_EVALUATOR_ATTEMPTS = 2
 DEFAULT_EXCLUSIONS = {
     "api_key",
     "apikey",
@@ -39,6 +41,21 @@ DEFAULT_EXCLUSIONS = {
     "stacktrace",
     "token",
 }
+
+SEMANTIC_SYSTEM_PROMPT = """Return ONLY one JSON object, with no markdown. Analyze only supplied
+evidence. The object must have exactly these fields and types:
+{"intent":"non-empty string","outcome":"success|failed|escalated|abandoned|uncertain",
+"outcome_source":"explicit|inferred|unknown",
+"resolution_state":"resolved|unresolved|escalated|abandoned|uncertain",
+"failure_category":null,"summary":"non-empty string","confidence":0.0,
+"evidence":[{"entity_type":"event|span|turn","entity_id":"an ID copied from supplied evidence"}],
+"findings":[]}
+Each finding, when evidence supports one, must contain: type, statement, severity
+(low|medium|high), confidence (0 through 1), certainty
+(inferred_contributing_factor|detected_condition), one or more supplied evidence IDs, and next_step.
+Use uncertain/unknown rather than null for required enums. Never invent evidence IDs. Never claim
+causation; say associated with or observed signal. The session ID is context only and must never be
+cited as evidence; entity_type can only be event, span, or turn."""
 
 
 class EvidenceReference(BaseModel):
@@ -302,39 +319,66 @@ def evaluate_session(
     encoded_evidence = json.dumps(evidence, default=str, separators=(",", ":"))
     started = time.monotonic()
     try:
-        response = httpx.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-            json={
-                "model": settings.openrouter_model,
-                "temperature": 0,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "Analyze only supplied evidence. Return JSON matching semantic schema "
-                            "v2: intent, outcome, outcome_source, resolution_state, "
-                            "failure_category, summary, confidence, evidence, and findings. "
-                            "Evidence entries use entity_type event|span|turn and supplied "
-                            "entity_id. Each finding includes type, statement, severity, "
-                            "confidence, certainty, evidence, and next_step. Use "
-                            "'inferred_contributing_factor' for interpretations. Never claim "
-                            "causation; say associated with or observed signal."
-                        ),
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": SEMANTIC_SYSTEM_PROMPT},
+            {"role": "user", "content": encoded_evidence},
+        ]
+        input_tokens = output_tokens = cost_micros = 0
+        input_observed = output_observed = cost_observed = False
+        result: SemanticResult | None = None
+        last_error: Exception | None = None
+        for attempt in range(MAX_EVALUATOR_ATTEMPTS):
+            try:
+                response = httpx.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+                    json={
+                        "model": settings.openrouter_model,
+                        "temperature": 0,
+                        "messages": messages,
                     },
-                    {"role": "user", "content": encoded_evidence},
-                ],
-            },
-            timeout=30,
-        )
-        response.raise_for_status()
-        body = response.json()
-        result = parse_semantic_result(body["choices"][0]["message"]["content"])
-        usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
-        analysis_run.input_tokens = usage.get("prompt_tokens")
-        analysis_run.output_tokens = usage.get("completion_tokens")
-        analysis_run.cost_micros = _cost_micros(usage)
+                    timeout=30,
+                )
+                response.raise_for_status()
+                body = response.json()
+                usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+                prompt_tokens = usage.get("prompt_tokens")
+                completion_tokens = usage.get("completion_tokens")
+                attempt_cost = _cost_micros(usage)
+                if isinstance(prompt_tokens, int):
+                    input_tokens += prompt_tokens
+                    input_observed = True
+                if isinstance(completion_tokens, int):
+                    output_tokens += completion_tokens
+                    output_observed = True
+                if attempt_cost is not None:
+                    cost_micros += attempt_cost
+                    cost_observed = True
+                content = body["choices"][0]["message"]["content"]
+                if not isinstance(content, str):
+                    raise ValueError("Evaluator response content was not text")
+                result = parse_semantic_result(content)
+                break
+            except Exception as error:
+                last_error = error
+                if attempt + 1 < MAX_EVALUATOR_ATTEMPTS:
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "The prior response failed the required schema. Return only a "
+                                "corrected JSON object using the exact allowed values and only "
+                                "evidence IDs supplied in the original request."
+                            ),
+                        }
+                    )
+        if result is None:
+            if last_error is None:
+                raise RuntimeError("Semantic evaluator returned no result")
+            raise last_error
+        analysis_run.input_tokens = input_tokens if input_observed else None
+        analysis_run.output_tokens = output_tokens if output_observed else None
+        analysis_run.cost_micros = cost_micros if cost_observed else None
         analysis_run.evaluator_latency_ms = (time.monotonic() - started) * 1000
         valid = _evidence_maps(events, spans, turns)
         result_evidence = _resolved_refs(result.evidence, valid)

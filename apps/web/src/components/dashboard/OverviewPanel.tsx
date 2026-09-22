@@ -310,9 +310,20 @@ export function OverviewPanel({
                     <small className="mr-1 text-slate-400">{item.group}</small>
                     {item.label}
                   </span>
-                  <b className="text-sm tabular-nums text-slate-900">
-                    {formatRate(item.resolution_rate)} · {item.sessions}
-                  </b>
+                  {item.session_ids[0] ? (
+                    <Link
+                      className="text-sm font-semibold tabular-nums text-emerald-800 underline-offset-4 hover:underline"
+                      to={`/sessions/${item.session_ids[0]}`}
+                    >
+                      {displayRate(item.resolution_rate)} · {item.known_outcomes} known /{" "}
+                      {item.sessions} sessions
+                    </Link>
+                  ) : (
+                    <b className="text-sm tabular-nums text-slate-900">
+                      {displayRate(item.resolution_rate)} · {item.known_outcomes} known /{" "}
+                      {item.sessions} sessions
+                    </b>
+                  )}
                 </div>
               ))}
             {!(

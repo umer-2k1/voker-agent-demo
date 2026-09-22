@@ -16,7 +16,10 @@ from voker_voice_api.config import Settings
 from voker_voice_api.models import Recording
 
 PLAYBACK_URL_TTL_SECONDS = 300
-SUPPORTED_RECORDING_SOURCES = frozenset({"cloudinary", "vapi", "retell", "external", "local"})
+SUPPORTED_RECORDING_SOURCES = frozenset(
+    {"cloudinary", "livekit", "vapi", "retell", "external", "local"}
+)
+EXTERNAL_RECORDING_SOURCES = frozenset({"livekit", "vapi", "retell", "external"})
 SUPPORTED_RECORDING_STATES = frozenset(
     {"available", "processing", "unavailable", "deleted", "expired", "denied"}
 )
@@ -29,7 +32,7 @@ def validate_recording_metadata(*, source: str, status: str, asset_reference: st
         raise ValueError(f"Unsupported recording status: {status}")
     if status == "available" and not asset_reference:
         raise ValueError("Available recordings require an asset reference")
-    if source in {"vapi", "retell", "external"} and asset_reference:
+    if source in EXTERNAL_RECORDING_SOURCES and asset_reference:
         parsed = urlparse(asset_reference)
         if parsed.scheme != "https" or not parsed.netloc:
             raise ValueError("External recording references must use HTTPS")
@@ -49,7 +52,7 @@ def recording_expiry(
 
 
 def external_playback_url(recording: Recording) -> str:
-    if recording.source not in {"vapi", "retell", "external"}:
+    if recording.source not in EXTERNAL_RECORDING_SOURCES:
         raise ValueError("Recording is not an external provider asset")
     validate_recording_metadata(
         source=recording.source,

@@ -163,6 +163,33 @@ def test_vapi_end_report_normalizes_complete_trace_without_raw_payload_copy() ->
     )
 
 
+def test_vapi_zero_cost_and_zero_token_usage_remain_observed() -> None:
+    events = normalize_vapi(
+        {
+            "message": {
+                "type": "end-of-call-report",
+                "call": {
+                    "id": "free-call",
+                    "endedAt": "2026-09-22T10:01:00Z",
+                    "cost": 0,
+                    "usage": {
+                        "promptTokens": 0,
+                        "completionTokens": 0,
+                        "totalTokens": 0,
+                    },
+                },
+            }
+        },
+        "free-delivery",
+    )
+
+    usage = next(event for event in events if event["event_type"] == "usage.recorded")
+    assert usage["attributes"]["provider_cost_micros"] == 0
+    assert usage["usage"]["input_tokens"] == 0
+    assert usage["usage"]["output_tokens"] == 0
+    assert usage["usage"]["total_tokens"] == 0
+
+
 def test_retell_signature_and_unknown_values_are_handled() -> None:
     raw = b'{"event":"call_started","call":{"call_id":"call-2"}}'
     now = datetime(2026, 9, 21, 10, 0, tzinfo=UTC)

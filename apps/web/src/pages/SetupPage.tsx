@@ -46,11 +46,11 @@ const installCommands: Record<string, string> = {
 
 function snippet(kind: string, environment: string) {
   if (kind === "livekit")
-    return `from voker_voice import VokerVoice, observe_livekit\n\nvoker = VokerVoice(api_key=os.environ["VOKER_API_KEY"])\nobserver = observe_livekit(agent_session, context=ctx, agent="support-agent", version="1.0", client=voker)`;
+    return `import os\nfrom voker_voice import VokerVoice, observe_livekit\n\nvoker = VokerVoice(api_key=os.environ["VOKER_API_KEY"])\nobserver = observe_livekit(agent_session, context=ctx, agent="support-agent", version="1.0", client=voker)`;
   if (kind === "langgraph")
-    return `from voker_voice import observe_langgraph\n\nasync with voker.session(agent="support-agent", version="1.0", session_id=call_id) as call:\n    result = await observe_langgraph(graph, session=call).ainvoke(inputs)`;
+    return `import os\nfrom voker_voice import VokerVoice, observe_langgraph\n\nvoker = VokerVoice(api_key=os.environ["VOKER_API_KEY"])\nasync with voker.session(agent="support-agent", version="1.0", session_id=call_id) as call:\n    result = await observe_langgraph(graph, session=call).ainvoke(inputs)`;
   if (kind === "sdk")
-    return `from voker_voice import VokerVoice\n\nvoker = VokerVoice(api_key=os.environ["VOKER_API_KEY"])\nasync with voker.session(agent="support-agent", version="1.0", session_id=call_id) as call:\n    async with call.span("llm", provider="openrouter"):\n        ...`;
+    return `import os\nfrom voker_voice import VokerVoice\n\nvoker = VokerVoice(api_key=os.environ["VOKER_API_KEY"])\nasync with voker.session(agent="support-agent", version="1.0", session_id=call_id) as call:\n    async with call.span("llm", provider="openrouter"):\n        ...`;
   return `Provider: ${kind}\nEnvironment: ${environment}\nContinue in the managed connector form.`;
 }
 
@@ -353,13 +353,23 @@ export function SetupPage() {
         "/api/projects",
       ),
   });
-  const [selectedProject, setSelectedProject] = useState(defaultProjectSlug);
+  const [projectChoice, setProjectChoice] = useState(defaultProjectSlug);
+  const projectItems = projects.data?.items ?? [];
+  const selectedProject =
+    projectItems.find((item) => item.slug === projectChoice)?.slug ??
+    projectItems[0]?.slug ??
+    projectChoice;
   const setup = useQuery({
     queryKey: ["project-setup", selectedProject],
     queryFn: () =>
       request<ProjectSetup>(`/api/projects/${selectedProject}/setup`),
   });
-  const [environment, setEnvironment] = useState("development");
+  const [environmentChoice, setEnvironmentChoice] = useState("development");
+  const environmentItems = setup.data?.environments ?? [];
+  const environment =
+    environmentItems.find((item) => item.slug === environmentChoice)?.slug ??
+    environmentItems[0]?.slug ??
+    environmentChoice;
   const [path, setPath] = useState("sdk");
   const code = snippet(path, environment);
 
@@ -379,9 +389,9 @@ export function SetupPage() {
           <NativeSelect
             aria-label="Project"
             value={selectedProject}
-            onChange={(event) => setSelectedProject(event.target.value)}
+            onChange={(event) => setProjectChoice(event.target.value)}
           >
-            {(projects.data?.items ?? []).map((project) => (
+            {projectItems.map((project) => (
               <option key={project.id} value={project.slug}>
                 {project.name}
               </option>
@@ -390,9 +400,9 @@ export function SetupPage() {
           <NativeSelect
             aria-label="Environment"
             value={environment}
-            onChange={(event) => setEnvironment(event.target.value)}
+            onChange={(event) => setEnvironmentChoice(event.target.value)}
           >
-            {(setup.data?.environments ?? []).map((item) => (
+            {environmentItems.map((item) => (
               <option key={item.id} value={item.slug}>
                 {item.name}
               </option>
@@ -485,6 +495,7 @@ export function SetupPage() {
               </p>
               {kind === "vapi" || kind === "retell" ? (
                 <ConnectorSetup
+                  key={`${selectedProject}-${kind}`}
                   provider={kind}
                   projectSlug={selectedProject}
                   environment={environment}

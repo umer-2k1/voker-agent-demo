@@ -88,8 +88,10 @@ export type Analytics = {
 export type ComparisonItem = {
   label: string;
   sessions: number;
+  known_outcomes: number;
   resolved: number;
-  resolution_rate: number;
+  resolution_rate: number | null;
+  session_ids: string[];
 };
 
 export type VoiceSession = {

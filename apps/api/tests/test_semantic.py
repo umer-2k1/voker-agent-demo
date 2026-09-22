@@ -237,9 +237,48 @@ def test_semantic_evaluator_persists_metrics_mixed_evidence_and_outcome(
     assert {item.entity_type for item in evidence} == {"event", "span", "turn"}
     assert voice_session.outcome == "success"
     assert voice_session.outcome_source == "semantic"
+    assert "response_format" not in captured["json"]
+    assert "success|failed|escalated|abandoned|uncertain" in captured["json"]["messages"][0][
+        "content"
+    ]
     prompt = captured["json"]["messages"][1]["content"]
     assert "must-not-be-sent" not in prompt
     assert "123-45-6789" not in prompt
+
+
+def test_invalid_semantic_schema_is_retried_once_and_then_persisted(monkeypatch) -> None:
+    db, voice_session, _project = database()
+    settings = get_settings()
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr(settings, "openrouter_model", "test/model")
+    contents = iter(["not valid JSON", semantic_json()])
+    calls = 0
+
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": next(contents)}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "cost": 0.0001},
+            }
+
+    def post(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return Response()
+
+    monkeypatch.setattr("voker_voice_api.semantic.httpx.post", post)
+
+    assert evaluate_session(db, session_id=voice_session.id) == 1
+    assert calls == 2
+    run = db.scalar(select(AnalysisRun))
+    assert run is not None
+    assert run.status == "completed"
+    assert run.input_tokens == 20
+    assert run.output_tokens == 10
+    assert run.cost_micros == 200
 
 
 def test_unknown_evidence_marks_run_insufficient_and_publishes_no_summary(
@@ -307,10 +346,14 @@ def test_provider_failure_is_visible_and_does_not_escape_worker_boundary(
     settings = get_settings()
     monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
     monkeypatch.setattr(settings, "openrouter_model", "test/model")
-    monkeypatch.setattr(
-        "voker_voice_api.semantic.httpx.post",
-        lambda *_a, **_k: (_ for _ in ()).throw(httpx.ConnectError("offline")),
-    )
+    calls = 0
+
+    def post(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr("voker_voice_api.semantic.httpx.post", post)
 
     assert evaluate_session(db, session_id=voice_session.id) == 0
     run = db.scalar(select(AnalysisRun))
@@ -319,6 +362,7 @@ def test_provider_failure_is_visible_and_does_not_escape_worker_boundary(
     assert "ConnectError" in (run.error or "")
     assert run.result is not None
     assert run.result["authoritative_summary"] is None
+    assert calls == 2
 
 
 def test_reanalysis_versions_and_preserves_prior_deterministic_findings() -> None:

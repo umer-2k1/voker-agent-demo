@@ -27,6 +27,10 @@ def _mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _first_not_none(*values: Any) -> Any:
+    return next((value for value in values if value is not None), None)
+
+
 def provider_event_id(provider: str, stable_key: str, index: int = 0) -> str:
     digest = hashlib.sha256(f"{provider}:{stable_key}:{index}".encode()).hexdigest()[:40]
     return f"{provider}_{digest}"
@@ -394,15 +398,21 @@ def normalize_vapi(
             }
         events.append(terminal)
 
-        cost = call.get("cost") or message.get("cost")
+        cost = _first_not_none(call.get("cost"), message.get("cost"))
         usage = _mapping(call.get("usage"))
         usage_event = _base_event("vapi", call_id, "usage", "usage.recorded", ended_at, agent=agent)
         usage_event["usage"] = {
             "provider": "vapi",
             "model": usage.get("model"),
-            "input_tokens": usage.get("promptTokens") or usage.get("input_tokens"),
-            "output_tokens": usage.get("completionTokens") or usage.get("output_tokens"),
-            "total_tokens": usage.get("totalTokens") or usage.get("total_tokens"),
+            "input_tokens": _first_not_none(
+                usage.get("promptTokens"), usage.get("input_tokens")
+            ),
+            "output_tokens": _first_not_none(
+                usage.get("completionTokens"), usage.get("output_tokens")
+            ),
+            "total_tokens": _first_not_none(
+                usage.get("totalTokens"), usage.get("total_tokens")
+            ),
         }
         if isinstance(cost, (int, float)):
             usage_event["attributes"] = {"provider_cost_micros": round(cost * 1_000_000)}
@@ -542,7 +552,7 @@ def normalize_retell(
             ("llm", "llm.completed"),
             ("tts", "tts.completed"),
         ):
-            value = latency.get(key) or latency.get(f"{key}_latency")
+            value = _first_not_none(latency.get(key), latency.get(f"{key}_latency"))
             if isinstance(value, (int, float)):
                 latency_event = _base_event(
                     "retell",

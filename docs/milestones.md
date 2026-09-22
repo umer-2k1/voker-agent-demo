@@ -37,7 +37,8 @@ implemented, verified locally, and committed to `main`; an unchecked item remain
 
 Latest verified commit checkpoints include `ff0444a` (Phase 02 through managed connectors) and
 `2c072b2` (analytics, costs, and recordings). The current Phase 02 tracker is
-[`phase-02-milestones.md`](./phase-02-milestones.md).
+[`phase-02-milestones.md`](./phase-02-milestones.md), with the final requirement-to-evidence review
+in [`phase-02-completion-audit.md`](./phase-02-completion-audit.md).
 
 ## GitHub repository and commit workflow
 

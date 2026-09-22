@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from voker_voice_api.analysis_versions import ANALYSIS_SCHEMA_VERSION, prompt_version_for_job
 from voker_voice_api.config import get_settings
 from voker_voice_api.costs import estimate_llm_cost_micros
 from voker_voice_api.models import (
@@ -169,8 +170,8 @@ def enqueue_completion_analysis(db: Session, project_id: uuid.UUID, session_id: 
                 session_id=session_id,
                 status="queued",
                 analysis_version=int(latest_version or 0) + 1,
-                prompt_version=f"{prompt_prefix}-v2",
-                schema_version="2",
+                prompt_version=prompt_version_for_job(job_type),
+                schema_version=ANALYSIS_SCHEMA_VERSION,
             )
             db.add(analysis_run)
             db.flush()
@@ -522,7 +523,7 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
         asset_reference = event.attributes.get("recording_url")
         external_id = event.attributes.get("recording_external_id")
         source = event.source.provider or event.source.integration or "external"
-        if source not in {"cloudinary", "vapi", "retell", "external", "local"}:
+        if source not in {"cloudinary", "livekit", "vapi", "retell", "external", "local"}:
             source = "external"
         existing_recording = db.scalar(
             select(Recording).where(

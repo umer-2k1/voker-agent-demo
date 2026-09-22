@@ -7,11 +7,19 @@ import { z } from "zod";
 
 import type { Account } from "@/pages/AccountPage";
 import { Button } from "@/components/ui/button";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
-const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
+const defaultProjectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
 type ApiKey = {
   id: string;
   label: string;
@@ -44,23 +52,51 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function SettingsPage({ account }: { account: Account }) {
   const queryClient = useQueryClient();
+  const [projectChoice, setProjectChoice] = useState(defaultProjectSlug);
+  const [environmentChoice, setEnvironmentChoice] = useState("development");
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [revokeCandidate, setRevokeCandidate] = useState<ApiKey | null>(null);
   const form = useForm<z.infer<typeof createKeySchema>>({
     resolver: zodResolver(createKeySchema),
     defaultValues: { label: "" },
   });
+  const projects = useQuery({
+    queryKey: ["projects"],
+    queryFn: () =>
+      request<{ items: Array<{ id: string; name: string; slug: string }> }>(
+        "/api/projects",
+      ),
+  });
+  const projectItems = projects.data?.items ?? [];
+  const projectSlug =
+    projectItems.find((item) => item.slug === projectChoice)?.slug ??
+    projectItems[0]?.slug ??
+    projectChoice;
+  const setup = useQuery({
+    queryKey: ["project-setup", projectSlug],
+    queryFn: () =>
+      request<{
+        environments: Array<{ id: string; name: string; slug: string }>;
+      }>(`/api/projects/${projectSlug}/setup`),
+    enabled: Boolean(projectSlug),
+  });
+  const environmentItems = setup.data?.environments ?? [];
+  const environment =
+    environmentItems.find((item) => item.slug === environmentChoice)?.slug ??
+    environmentItems[0]?.slug ??
+    environmentChoice;
   const keys = useQuery({
     queryKey: ["api-keys", projectSlug],
     queryFn: () =>
       request<{ items: ApiKey[] }>(`/api/projects/${projectSlug}/api-keys`),
+    enabled: Boolean(projectSlug),
   });
   const createKey = useMutation({
     mutationFn: (label: string) =>
       request<{ api_key: string }>(`/api/projects/${projectSlug}/api-keys`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ label, environment: "development" }),
+        body: JSON.stringify({ label, environment }),
       }),
     onSuccess: (result) => {
       setRevealedKey(result.api_key);
@@ -82,6 +118,7 @@ export function SettingsPage({ account }: { account: Account }) {
       });
     },
   });
+
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-10 md:px-10 md:py-14">
       <header className="mb-8 flex flex-col gap-5 border-b border-[#dce8e5] pb-7 md:flex-row md:items-end md:justify-between">
@@ -97,10 +134,38 @@ export function SettingsPage({ account }: { account: Account }) {
             place.
           </p>
         </div>
-        <span className="inline-flex w-fit items-center gap-2 rounded-full border border-[#cce0db] bg-[#eaf5f3] px-3 py-2 text-xs font-bold text-[#176258]">
-          <i className="h-2 w-2 rounded-full bg-[#20a28b]" />
-          {projectSlug}
-        </span>
+        <div className="grid w-full max-w-md gap-2 sm:grid-cols-2">
+          <NativeSelect
+            aria-label="Project"
+            value={projectSlug}
+            onChange={(event) => {
+              setProjectChoice(event.target.value);
+              setRevealedKey(null);
+              setRevokeCandidate(null);
+            }}
+          >
+            {projectItems.map((project) => (
+              <option key={project.id} value={project.slug}>
+                {project.name}
+              </option>
+            ))}
+          </NativeSelect>
+          <NativeSelect
+            aria-label="Environment"
+            value={environment}
+            onChange={(event) => {
+              setEnvironmentChoice(event.target.value);
+              setRevealedKey(null);
+              setRevokeCandidate(null);
+            }}
+          >
+            {environmentItems.map((item) => (
+              <option key={item.id} value={item.slug}>
+                {item.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
       </header>
       <nav className="mb-6 !flex gap-6" aria-label="Settings sections">
         <a
@@ -189,25 +254,41 @@ export function SettingsPage({ account }: { account: Account }) {
             </div>
           ) : null}
           <Form {...form}>
-          <form
-            className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-end"
-            onSubmit={form.handleSubmit((values) => createKey.mutate(values.label))}
-          >
-            <FormField control={form.control} name="label" render={({ field }) => (
-              <FormItem className="flex-1">
-                <FormLabel>Key label</FormLabel>
-                <FormControl><Input placeholder="e.g. Production voice agent" {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-            <Button
-              type="submit"
-              disabled={createKey.isPending}
+            <form
+              className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-end"
+              onSubmit={form.handleSubmit((values) =>
+                createKey.mutate(values.label),
+              )}
             >
-              {createKey.isPending ? "Creating…" : "Create key"}
-            </Button>
-          </form>
+              <FormField
+                control={form.control}
+                name="label"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <FormLabel>Key label for {environment}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g. Production voice agent"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button
+                type="submit"
+                disabled={createKey.isPending || !environment || !projectSlug}
+              >
+                {createKey.isPending ? "Creating…" : "Create key"}
+              </Button>
+            </form>
           </Form>
+          {createKey.isError ? (
+            <p className="mt-3 text-sm font-semibold text-[#9e3325]" role="alert">
+              Could not create the key for this project and environment.
+            </p>
+          ) : null}
           {keys.isPending ? (
             <div className="mt-5 space-y-2">
               <div className="h-15 animate-pulse rounded-lg bg-[#eaf5f3]" />

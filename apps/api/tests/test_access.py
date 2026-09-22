@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -14,10 +15,12 @@ from voker_voice_api.models import (
     OrganizationMember,
     Project,
     Recording,
+    Span,
     User,
 )
 from voker_voice_api.models import Session as VoiceSession
 from voker_voice_api.routers.account import require_dashboard_user
+from voker_voice_api.routers.dashboard import project_overview
 from voker_voice_api.security import generate_ingest_key
 
 
@@ -108,6 +111,20 @@ def test_members_can_read_but_only_owner_or_admin_can_mutate_keys() -> None:
             json={"label": "SDK", "environment": "development"},
         )
         assert denied.status_code == 403
+        assert (
+            client.post(
+                "/api/projects/voice/integrations",
+                json={"provider": "vapi", "name": "Vapi"},
+            ).status_code
+            == 403
+        )
+        assert (
+            client.patch(
+                f"/api/projects/voice/integrations/{uuid4()}",
+                json={"enabled": False},
+            ).status_code
+            == 403
+        )
 
         app.dependency_overrides[require_dashboard_user] = lambda: owner
         created = client.post(
@@ -116,9 +133,54 @@ def test_members_can_read_but_only_owner_or_admin_can_mutate_keys() -> None:
         )
         assert created.status_code == 201
         assert created.json()["api_key"].startswith("vkr_")
+        key = db.scalar(select(APIKey).where(APIKey.prefix == created.json()["prefix"]))
+        assert key is not None
+        app.dependency_overrides[require_dashboard_user] = lambda: member
+        assert (
+            client.post(f"/api/projects/voice/api-keys/{key.id}/revoke").status_code == 403
+        )
     finally:
         app.dependency_overrides.clear()
         db.close()
+
+
+def test_project_overview_reconciles_database_side_span_average() -> None:
+    db, owner, _, project, _, environment = access_database()
+    started_at = datetime.now(UTC)
+    voice_session = VoiceSession(
+        project_id=project.id,
+        environment_id=environment.id,
+        external_session_id="overview-call",
+        trace_id="overview-trace",
+        source="sdk",
+        status="completed",
+        started_at=started_at,
+        metadata_={},
+    )
+    db.add(voice_session)
+    db.flush()
+    db.add_all(
+        [
+            Span(
+                session_id=voice_session.id,
+                external_span_id=f"span-{index}",
+                name="llm",
+                kind="llm",
+                status="ok",
+                started_at=started_at,
+                duration_ms=duration,
+                attributes={},
+            )
+            for index, duration in enumerate((100, 300))
+        ]
+    )
+    db.commit()
+
+    overview = project_overview("voice", owner, db)
+
+    assert overview["metrics"]["total_sessions"] == 1
+    assert overview["metrics"]["average_span_duration_ms"] == 200
+    db.close()
 
 
 def test_recording_and_live_stream_lookup_cannot_cross_project_or_environment() -> None:

@@ -294,7 +294,9 @@ async def end_session(
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     session.status = payload.status
-    session.outcome = payload.outcome
+    if payload.outcome is not None:
+        session.outcome = payload.outcome
+        session.outcome_source = session.outcome_source or "explicit"
     session.ended_at = payload.ended_at
     enqueue_completion_analysis(db, context.project_id, session.id)
     db.commit()

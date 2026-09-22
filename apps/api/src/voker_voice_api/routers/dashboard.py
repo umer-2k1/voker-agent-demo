@@ -8,9 +8,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
-from sqlalchemy import case, exists, func, or_, select
+from sqlalchemy import String, case, exists, func, or_, select
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.orm import Session
 
+from voker_voice_api.analysis_versions import ANALYSIS_SCHEMA_VERSION, prompt_version_for_job
 from voker_voice_api.analytics import latency_distribution
 from voker_voice_api.bootstrap import create_ingest_key
 from voker_voice_api.config import REPOSITORY_ROOT, get_settings
@@ -559,20 +561,18 @@ def project_overview(
         )
         or 0
     )
-    durations = db.scalars(
-        select(Span.duration_ms)
+    avg_duration = db.scalar(
+        select(func.avg(Span.duration_ms))
         .join(VoiceSession, Span.session_id == VoiceSession.id)
         .where(VoiceSession.project_id == project.id, Span.duration_ms.is_not(None))
-    ).all()
-    duration_values = [float(item) for item in durations if item is not None]
-    avg_duration = sum(duration_values) / len(duration_values) if duration_values else None
+    )
     return {
         "project": {"id": str(project.id), "name": project.name, "slug": project.slug},
         "metrics": {
             "total_sessions": total_sessions,
             "active_sessions": active_sessions,
             "error_count": errors,
-            "average_span_duration_ms": avg_duration,
+            "average_span_duration_ms": json_number(avg_duration),
         },
     }
 
@@ -886,19 +886,26 @@ def analytics_overview(
             {
                 "label": str(label),
                 "sessions": int(sessions),
+                "known_outcomes": int(known_outcomes or 0),
                 "resolved": int(resolved or 0),
-                "resolution_rate": int(resolved or 0) / int(sessions),
+                "resolution_rate": (
+                    int(resolved or 0) / int(known_outcomes) if known_outcomes else None
+                ),
+                "session_ids": [str(UUID(str(representative_session_id)))],
             }
-            for label, sessions, resolved in rows
-            if sessions
+            for label, sessions, known_outcomes, resolved, representative_session_id in rows
+            if sessions and representative_session_id is not None
         ]
 
     resolved_case = case((filtered.c.outcome.in_(resolved_values), 1), else_=0)
+    known_outcome_case = case((filtered.c.outcome.is_not(None), 1), else_=0)
     agents = comparison_rows(
         select(
             func.coalesce(Agent.name, "Unknown agent"),
             func.count(filtered.c.id),
+            func.sum(known_outcome_case),
             func.sum(resolved_case),
+            func.min(sql_cast(filtered.c.id, String)),
         )
         .select_from(filtered)
         .outerjoin(Agent, Agent.id == filtered.c.agent_id)
@@ -910,7 +917,9 @@ def analytics_overview(
         select(
             func.coalesce(AgentVersion.version, "Unknown version"),
             func.count(filtered.c.id),
+            func.sum(known_outcome_case),
             func.sum(resolved_case),
+            func.min(sql_cast(filtered.c.id, String)),
         )
         .select_from(filtered)
         .outerjoin(AgentVersion, AgentVersion.id == filtered.c.agent_version_id)
@@ -919,7 +928,13 @@ def analytics_overview(
         .limit(20)
     )
     platforms = comparison_rows(
-        select(filtered.c.source, func.count(filtered.c.id), func.sum(resolved_case))
+        select(
+            filtered.c.source,
+            func.count(filtered.c.id),
+            func.sum(known_outcome_case),
+            func.sum(resolved_case),
+            func.min(sql_cast(filtered.c.id, String)),
+        )
         .select_from(filtered)
         .group_by(filtered.c.source)
         .order_by(func.count(filtered.c.id).desc())
@@ -937,11 +952,14 @@ def analytics_overview(
         .subquery("usage_sessions")
     )
     usage_resolved = case((usage_sessions.c.outcome.in_(resolved_values), 1), else_=0)
+    usage_known_outcome = case((usage_sessions.c.outcome.is_not(None), 1), else_=0)
     providers = comparison_rows(
         select(
             usage_sessions.c.provider,
             func.count(),
+            func.sum(usage_known_outcome),
             func.sum(usage_resolved),
+            func.min(sql_cast(usage_sessions.c.session_id, String)),
         )
         .select_from(usage_sessions)
         .group_by(usage_sessions.c.provider)
@@ -949,7 +967,13 @@ def analytics_overview(
         .limit(20)
     )
     models = comparison_rows(
-        select(usage_sessions.c.model, func.count(), func.sum(usage_resolved))
+        select(
+            usage_sessions.c.model,
+            func.count(),
+            func.sum(usage_known_outcome),
+            func.sum(usage_resolved),
+            func.min(sql_cast(usage_sessions.c.session_id, String)),
+        )
         .select_from(usage_sessions)
         .group_by(usage_sessions.c.model)
         .order_by(func.count().desc())
@@ -1474,7 +1498,9 @@ def get_session_trace(
                 "evidence": [
                     evidence_target(evidence)
                     for evidence in db.scalars(
-                        select(FindingEvidence).where(FindingEvidence.finding_id == finding.id)
+                        select(FindingEvidence)
+                        .where(FindingEvidence.finding_id == finding.id)
+                        .limit(20)
                     )
                 ],
             }
@@ -1570,8 +1596,8 @@ def request_reanalysis(
             session_id=session.id,
             status="queued",
             analysis_version=int(latest_version or 0) + 1,
-            prompt_version=f"{prompt_prefix}-v2",
-            schema_version="2",
+            prompt_version=prompt_version_for_job(job_type),
+            schema_version=ANALYSIS_SCHEMA_VERSION,
         )
         db.add(analysis_run)
         db.flush()
@@ -1735,7 +1761,7 @@ def redirect_to_recording_playback(
     try:
         url = (
             external_playback_url(recording)
-            if recording.source in {"vapi", "retell", "external"}
+            if recording.source in {"livekit", "vapi", "retell", "external"}
             else cloudinary_playback_url(recording, get_settings())
         )
     except ValueError as error:

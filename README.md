@@ -2,7 +2,74 @@
 
 A small FastAPI service for generating useful Voker observability data. It runs a LangGraph ReAct agent through OpenRouter, gives it three local tools and three tools dynamically loaded from a local stdio MCP server, and records model, tool, MCP, and graph failures to Voker.
 
-## Setup
+## Run the Voker Voice dashboard locally
+
+### Prerequisites
+
+- Python 3.12+
+- Node.js 22+
+- pnpm 10.5+
+- Docker Desktop
+
+### First-time setup
+
+From the repository root:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -U pip
+python -m pip install -e "apps/api[dev]" -e "packages/python-sdk[dev]"
+pnpm install
+docker compose up -d postgres
+cp .env.example .env
+alembic -c apps/api/alembic.ini upgrade head
+voker-voice-api seed
+```
+
+To add realistic local-only dashboard data for UI review:
+
+```bash
+voker-voice-api seed-demo --count 40
+```
+
+The demo seed is idempotent and only creates missing `demo-call-*` records.
+
+### Start the backend
+
+Open a terminal in the repository root:
+
+```bash
+source venv/bin/activate
+uvicorn voker_voice_api.main:app --app-dir apps/api/src --reload --host localhost --port 8001
+```
+
+Backend URLs:
+
+- API: <http://localhost:8001>
+- OpenAPI documentation: <http://localhost:8001/docs>
+- Health check: <http://localhost:8001/health>
+
+### Start the frontend
+
+Open a second terminal in the repository root:
+
+```bash
+pnpm dev:web -- --host localhost
+```
+
+Open the dashboard at <http://localhost:5173>.
+
+Use the same host name for both services. Do not mix `localhost` and
+`127.0.0.1`, because browser session cookies are host-specific. Local Google
+sign-in also requires `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, and
+`GOOGLE_CLIENT_SECRET` in the ignored root `.env`; configure the Google callback
+as `http://localhost:8001/auth/google/callback`.
+
+For additional environment, ingest-key, validation, and snapshot instructions,
+see [`docs/development.md`](docs/development.md).
+
+## Legacy imperfect-agent demo setup
 
 ```bash
 python3 -m venv venv

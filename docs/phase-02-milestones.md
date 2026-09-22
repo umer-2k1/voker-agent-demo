@@ -780,3 +780,14 @@ Requested initial-release UI work is **100% complete (22/22 acceptance checks)**
 - [x] Twenty-two desktop/mobile screenshots are saved for review.
 
 Detailed evidence, the route/interaction matrix, known external-dependency boundaries, and the screenshot index are in [`docs/ui-review/playwright-audit.md`](ui-review/playwright-audit.md).
+
+## 20. Dashboard shell and settings UX refinement — 2026-09-22
+
+- [x] Replace the custom desktop/mobile navigation shell with the shadcn sidebar primitives.
+- [x] Keep the desktop sidebar fixed while the dashboard content region scrolls independently.
+- [x] Use the shadcn sheet-based sidebar on mobile and close it after route selection.
+- [x] Replace the oversized input focus treatment with a subtle accessible focus state.
+- [x] Remove the settings faux-tab navigation and stack the account/API-key sections.
+- [x] Hide project and environment selectors when there is only one possible value; never render empty selectors.
+- [x] Keep the API-key empty state distinct from transport failures and provide a clear retry action.
+- [x] Verify desktop scrolling, mobile drawer behavior, empty/error states, unit tests, lint, and the production build.

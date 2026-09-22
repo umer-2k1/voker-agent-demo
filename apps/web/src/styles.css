@@ -72,9 +72,14 @@ button {
 button:not(:disabled) {
   cursor: pointer;
 }
-:where(a, button, input, select, textarea):focus-visible {
-  outline: 3px solid var(--ring);
-  outline-offset: 3px;
+:where(a, button):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+:where(input, select, textarea):not([data-slot]):focus-visible {
+  border-color: #5f8f87;
+  box-shadow: 0 0 0 2px rgb(0 77 67 / 14%);
+  outline: none;
 }
 .skip-link {
   background: #fff;
@@ -96,6 +101,73 @@ button:not(:disabled) {
 }
 .product-shell > * {
   min-width: 0;
+}
+.dashboard-sidebar-root {
+  --sidebar: #004d43;
+  --sidebar-accent: #ddeaed;
+  --sidebar-accent-foreground: #004d43;
+  --sidebar-border: #267469;
+  --sidebar-foreground: #eaf5f3;
+  --sidebar-ring: #9ecbc3;
+  --sidebar-width: 224px;
+  height: 100vh;
+  height: 100svh;
+  min-height: 0;
+  overflow: hidden;
+}
+.voker-sidebar {
+  --sidebar: #004d43;
+  --sidebar-accent: #ddeaed;
+  --sidebar-accent-foreground: #004d43;
+  --sidebar-border: #267469;
+  --sidebar-foreground: #eaf5f3;
+  --sidebar-ring: #9ecbc3;
+}
+.dashboard-scroll-region {
+  flex: 1;
+  height: 100vh;
+  height: 100svh;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+.voker-sidebar-header {
+  padding: 24px 12px 8px;
+}
+.voker-sidebar-header .brand {
+  text-decoration: none;
+}
+.voker-sidebar-group {
+  padding: 22px 12px 12px;
+}
+.voker-sidebar-label {
+  color: #9ecbc3;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  margin-bottom: 8px;
+  padding-inline: 12px;
+  text-transform: uppercase;
+}
+.voker-sidebar-link {
+  color: #c8dfdb;
+  height: 44px;
+  padding-inline: 12px;
+}
+.voker-sidebar-link:hover {
+  background: #116258;
+  color: white;
+}
+.voker-sidebar-link[data-active="true"] {
+  background: #ddeaed;
+  color: #004d43;
+  font-weight: 700;
+}
+.voker-sidebar-footer {
+  border-top: 1px solid #267469;
+  margin: 0 24px;
+  padding: 18px 0 24px;
 }
 .sidebar {
   background: #004d43;
@@ -1800,7 +1872,6 @@ h2 {
   .mobile-dashboard-nav {
     align-items: center;
     background: #004d43;
-    display: flex;
     gap: 14px;
     grid-column: 1;
     min-width: 0;
@@ -1886,6 +1957,14 @@ h2 {
   .waveform-track {
     flex-basis: 100%;
     order: 3;
+  }
+}
+@media (max-width: 767px) {
+  .mobile-dashboard-nav {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 30;
   }
 }
 @media (max-width: 560px) {

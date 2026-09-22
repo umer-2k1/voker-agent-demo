@@ -76,7 +76,7 @@ export function SettingsPage({ account }: { account: Account }) {
   const projectSlug =
     projectItems.find((item) => item.slug === projectChoice)?.slug ??
     projectItems[0]?.slug ??
-    projectChoice;
+    "";
   const setup = useQuery({
     queryKey: ["project-setup", projectSlug],
     queryFn: () =>
@@ -89,7 +89,7 @@ export function SettingsPage({ account }: { account: Account }) {
   const environment =
     environmentItems.find((item) => item.slug === environmentChoice)?.slug ??
     environmentItems[0]?.slug ??
-    environmentChoice;
+    "";
   const keys = useQuery({
     queryKey: ["api-keys", projectSlug],
     queryFn: () =>
@@ -125,8 +125,8 @@ export function SettingsPage({ account }: { account: Account }) {
   });
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-6 py-10 md:px-10 md:py-14">
-      <header className="mb-8 flex flex-col gap-5 border-b border-[#dce8e5] pb-7 md:flex-row md:items-end md:justify-between">
+    <main className="mx-auto w-full max-w-5xl px-6 py-10 md:px-10 md:py-14">
+      <header className="mb-8 border-b border-[#dce8e5] pb-7">
         <div>
           <p className="text-xs font-bold uppercase tracking-[.14em] text-[#267469]">
             Workspace settings
@@ -139,54 +139,8 @@ export function SettingsPage({ account }: { account: Account }) {
             place.
           </p>
         </div>
-        <div className="grid w-full max-w-md gap-2 sm:grid-cols-2">
-          <NativeSelect
-            aria-label="Project"
-            value={projectSlug}
-            onChange={(event) => {
-              setProjectChoice(event.target.value);
-              setRevealedKey(null);
-              setRevokeCandidate(null);
-            }}
-          >
-            {projectItems.map((project) => (
-              <option key={project.id} value={project.slug}>
-                {project.name}
-              </option>
-            ))}
-          </NativeSelect>
-          <NativeSelect
-            aria-label="Environment"
-            value={environment}
-            onChange={(event) => {
-              setEnvironmentChoice(event.target.value);
-              setRevealedKey(null);
-              setRevokeCandidate(null);
-            }}
-          >
-            {environmentItems.map((item) => (
-              <option key={item.id} value={item.slug}>
-                {item.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
       </header>
-      <nav className="mb-6 !flex gap-6" aria-label="Settings sections">
-        <a
-          className="border-b-2 border-[#20a28b] pb-3 text-sm font-bold text-[#004d43]"
-          href="#profile"
-        >
-          Profile
-        </a>
-        <a
-          className="border-b-2 border-transparent pb-3 text-sm font-bold text-[#526b67] hover:text-[#004d43]"
-          href="#api-keys"
-        >
-          API keys
-        </a>
-      </nav>
-      <div className="grid gap-5 lg:grid-cols-[minmax(300px,.82fr)_minmax(0,1.5fr)]">
+      <div className="grid gap-5">
         <section
           className="rounded-2xl border border-[#dce8e5] bg-white p-6 shadow-[0_2px_8px_rgb(15_38_34/3%)]"
           id="profile"
@@ -205,7 +159,7 @@ export function SettingsPage({ account }: { account: Account }) {
               Connected
             </span>
           </div>
-          <div className="mt-7 flex items-center gap-4 rounded-xl border border-[#d8e8e4] bg-gradient-to-br from-[#f0f8f6] to-white p-5">
+          <div className="mt-7 flex max-w-xl items-center gap-4 rounded-xl border border-[#d8e8e4] bg-gradient-to-br from-[#f0f8f6] to-white p-5">
             <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-[#004d43] text-lg font-extrabold text-white">
               {initials(account)}
             </span>
@@ -220,15 +174,6 @@ export function SettingsPage({ account }: { account: Account }) {
                 Authenticated securely with Google
               </small>
             </div>
-          </div>
-          <div className="mt-6 border-t border-[#e7eeec] pt-5 text-sm leading-6 text-[#526b67]">
-            <b className="block text-[#254841]">
-              Your identity is managed by Google.
-            </b>
-            <span>
-              Use the profile control in the sidebar to sign out of this
-              workspace.
-            </span>
           </div>
         </section>
         <section
@@ -252,43 +197,133 @@ export function SettingsPage({ account }: { account: Account }) {
               {keys.data?.items.length ?? 0} keys
             </span>
           </div>
+          {projects.isPending || (projectSlug && setup.isPending) ? (
+            <div className="mt-6 h-16 animate-pulse rounded-xl bg-[#edf5f3]" />
+          ) : null}
+          {projects.isError || setup.isError ? (
+            <div className="mt-6 flex flex-col gap-3 rounded-xl border border-[#dce8e5] bg-[#f7faf9] p-4 text-sm text-[#526b67] sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                Workspace configuration is temporarily unavailable. Start the
+                API and try again.
+              </span>
+              <Button
+                onClick={() => {
+                  void projects.refetch();
+                  if (projectSlug) void setup.refetch();
+                }}
+                type="button"
+                variant="outline"
+              >
+                Try again
+              </Button>
+            </div>
+          ) : null}
+          {projectSlug && environment ? (
+            <div className="mt-6 rounded-xl border border-[#dce8e5] bg-[#f7faf9] p-4">
+              <p className="mb-3 text-xs font-bold uppercase tracking-[.12em] text-[#52706a]">
+                Key scope
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {projectItems.length > 1 ? (
+                  <label className="grid gap-1.5 text-sm font-semibold text-[#254841]">
+                    Project
+                    <NativeSelect
+                      aria-label="Project"
+                      value={projectSlug}
+                      onChange={(event) => {
+                        setProjectChoice(event.target.value);
+                        setRevealedKey(null);
+                        setRevokeCandidate(null);
+                      }}
+                    >
+                      {projectItems.map((project) => (
+                        <option key={project.id} value={project.slug}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </label>
+                ) : (
+                  <div>
+                    <span className="block text-xs text-[#708681]">
+                      Project
+                    </span>
+                    <b className="mt-1 block text-sm text-[#254841]">
+                      {projectItems[0]?.name}
+                    </b>
+                  </div>
+                )}
+                {environmentItems.length > 1 ? (
+                  <label className="grid gap-1.5 text-sm font-semibold text-[#254841]">
+                    Environment
+                    <NativeSelect
+                      aria-label="Environment"
+                      value={environment}
+                      onChange={(event) => {
+                        setEnvironmentChoice(event.target.value);
+                        setRevealedKey(null);
+                        setRevokeCandidate(null);
+                      }}
+                    >
+                      {environmentItems.map((item) => (
+                        <option key={item.id} value={item.slug}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </label>
+                ) : (
+                  <div>
+                    <span className="block text-xs text-[#708681]">
+                      Environment
+                    </span>
+                    <b className="mt-1 block text-sm capitalize text-[#254841]">
+                      {environmentItems[0]?.name}
+                    </b>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
           {revealedKey ? (
             <div className="mt-6 grid gap-2 rounded-xl border border-[#f0cc87] bg-[#fff7e9] p-4 text-sm">
               <b className="text-[#765515]">Copy this key now</b>
               <code className="break-all text-[#5e491f]">{revealedKey}</code>
             </div>
           ) : null}
-          <Form {...form}>
-            <form
-              className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-end"
-              onSubmit={form.handleSubmit((values) =>
-                createKey.mutate(values.label),
-              )}
-            >
-              <FormField
-                control={form.control}
-                name="label"
-                render={({ field }) => (
-                  <FormItem className="flex-1">
-                    <FormLabel>Key label for {environment}</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g. Production voice agent"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+          {projectSlug && environment ? (
+            <Form {...form}>
+              <form
+                className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-end"
+                onSubmit={form.handleSubmit((values) =>
+                  createKey.mutate(values.label),
                 )}
-              />
-              <Button
-                type="submit"
-                disabled={createKey.isPending || !environment || !projectSlug}
               >
-                {createKey.isPending ? "Creating…" : "Create key"}
-              </Button>
-            </form>
-          </Form>
+                <FormField
+                  control={form.control}
+                  name="label"
+                  render={({ field }) => (
+                    <FormItem className="flex-1">
+                      <FormLabel>Key label for {environment}</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="e.g. Production voice agent"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="submit"
+                  disabled={createKey.isPending || !environment || !projectSlug}
+                >
+                  {createKey.isPending ? "Creating…" : "Create key"}
+                </Button>
+              </form>
+            </Form>
+          ) : null}
           {createKey.isError ? (
             <p
               className="mt-3 text-sm font-semibold text-[#9e3325]"
@@ -303,10 +338,17 @@ export function SettingsPage({ account }: { account: Account }) {
               <div className="h-15 animate-pulse rounded-lg bg-[#eaf5f3]" />
             </div>
           ) : null}
-          {keys.isError ? (
-            <p className="mt-5 rounded-lg border border-[#efc2bb] bg-[#fff4f2] p-4 text-sm text-[#9e3325]">
-              {keys.error.message}.
-            </p>
+          {keys.isError && projectSlug ? (
+            <div className="mt-5 flex flex-col gap-3 rounded-lg border border-[#dce8e5] bg-[#f7faf9] p-4 text-sm text-[#526b67] sm:flex-row sm:items-center sm:justify-between">
+              <span>API keys could not be loaded right now.</span>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void keys.refetch()}
+              >
+                Retry
+              </Button>
+            </div>
           ) : null}
           {revokeCandidate ? (
             <section
@@ -383,7 +425,7 @@ export function SettingsPage({ account }: { account: Account }) {
                   )}
                 </div>
               ))
-            ) : !keys.isPending ? (
+            ) : keys.isSuccess ? (
               <div className="grid gap-1 px-6 py-9 text-center text-sm text-[#526b67]">
                 <b className="text-[#254841]">No API keys yet</b>
                 <span>

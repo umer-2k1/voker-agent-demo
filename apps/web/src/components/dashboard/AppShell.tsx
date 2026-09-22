@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import type { CSSProperties } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   Bot,
   Headphones,
   LayoutDashboard,
-  Menu,
   PlugZap,
   Settings,
 } from "lucide-react";
@@ -13,15 +13,31 @@ import {
 import type { Account } from "@/pages/AccountPage";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
+
+const navigation = [
+  { label: "Overview", to: "/", icon: LayoutDashboard, end: true },
+  { label: "Sessions", to: "/sessions", icon: Headphones, end: false },
+  { label: "Intents", to: "/intents", icon: BarChart3, end: false },
+  { label: "Setup", to: "/setup", icon: PlugZap, end: false },
+  { label: "Agents", to: "/agents", icon: Bot, end: false },
+  { label: "Workspace settings", to: "/settings", icon: Settings, end: false },
+] as const;
 
 function initials(account: Account) {
   const value = account.display_name?.trim() || account.email;
@@ -32,6 +48,108 @@ function initials(account: Account) {
     .map((part) => part[0])
     .join("")
     .toUpperCase();
+}
+
+type DashboardSidebarProps = {
+  account: Account;
+  isSigningOut: boolean;
+  logoutFailed: boolean;
+  onLogout: () => void;
+};
+
+function DashboardSidebar({
+  account,
+  isSigningOut,
+  logoutFailed,
+  onLogout,
+}: DashboardSidebarProps) {
+  const location = useLocation();
+  const { setOpenMobile } = useSidebar();
+
+  return (
+    <Sidebar
+      aria-label="Primary navigation"
+      className="voker-sidebar"
+      collapsible="offcanvas"
+    >
+      <SidebarHeader className="voker-sidebar-header">
+        <NavLink
+          aria-label="Voker overview"
+          className="brand"
+          onClick={() => setOpenMobile(false)}
+          to="/"
+        >
+          <span className="brand-mark" aria-hidden="true">
+            V
+          </span>
+          <span>Voker</span>
+        </NavLink>
+      </SidebarHeader>
+
+      <SidebarContent className="overflow-hidden">
+        <SidebarGroup className="voker-sidebar-group">
+          <SidebarGroupLabel className="voker-sidebar-label">
+            Voice operations
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <nav aria-label="Dashboard">
+              <SidebarMenu>
+                {navigation.map(({ label, to, icon: Icon, end }) => {
+                  const isActive = end
+                    ? location.pathname === to
+                    : location.pathname === to ||
+                      location.pathname.startsWith(`${to}/`);
+
+                  return (
+                    <SidebarMenuItem key={to}>
+                      <SidebarMenuButton
+                        asChild
+                        className="voker-sidebar-link"
+                        isActive={isActive}
+                        size="lg"
+                        tooltip={label}
+                      >
+                        <NavLink
+                          onClick={() => setOpenMobile(false)}
+                          to={to}
+                          end={end}
+                        >
+                          <Icon aria-hidden="true" />
+                          <span>{label}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </nav>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter className="voker-sidebar-footer">
+        <div className="account-menu">
+          <span className="account-avatar" aria-hidden="true">
+            {initials(account)}
+          </span>
+          <div>
+            <b>{account.display_name ?? "Google account"}</b>
+            <span>{account.email}</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="signout-button"
+            disabled={isSigningOut}
+            onClick={onLogout}
+          >
+            {isSigningOut ? "Signing out…" : "Sign out"}
+          </Button>
+          {logoutFailed ? <small>Could not sign out. Try again.</small> : null}
+        </div>
+      </SidebarFooter>
+    </Sidebar>
+  );
 }
 
 export function AppShell({ account }: { account: Account }) {
@@ -50,140 +168,38 @@ export function AppShell({ account }: { account: Account }) {
       navigate("/login", { replace: true });
     },
   });
+
   return (
-    <div className="product-shell">
+    <SidebarProvider
+      className="dashboard-sidebar-root"
+      style={{ "--sidebar-width": "224px" } as CSSProperties}
+    >
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">V</span>
-          <span>Voker</span>
+      <DashboardSidebar
+        account={account}
+        isSigningOut={logout.isPending}
+        logoutFailed={logout.isError}
+        onLogout={() => logout.mutate()}
+      />
+      <div className="dashboard-scroll-region">
+        <header className="mobile-dashboard-nav">
+          <NavLink className="mobile-brand" to="/">
+            <span className="brand-mark" aria-hidden="true">
+              V
+            </span>
+            <span>Voker</span>
+          </NavLink>
+          <SidebarTrigger
+            aria-label="Open navigation menu"
+            className="mobile-menu-trigger"
+          />
+        </header>
+        <div id="main-content">
+          <Outlet />
         </div>
-        <p className="workspace">VOICE OPERATIONS</p>
-        <nav aria-label="Primary navigation">
-          <NavLink
-            end
-            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/"
-          >
-            <LayoutDashboard aria-hidden="true" size={16} />
-            Overview
-          </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/sessions"
-          >
-            <Headphones aria-hidden="true" size={16} />
-            Sessions
-          </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/intents"
-          >
-            <BarChart3 aria-hidden="true" size={16} />
-            Intents
-          </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/setup"
-          >
-            <PlugZap aria-hidden="true" size={16} />
-            Setup
-          </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/agents"
-          >
-            <Bot aria-hidden="true" size={16} /> Agents
-          </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/settings"
-          >
-            <Settings aria-hidden="true" size={16} />
-            Workspace settings
-          </NavLink>
-        </nav>
-        <div className="sidebar-foot account-menu">
-          <span className="account-avatar" aria-hidden="true">
-            {initials(account)}
-          </span>
-          <div>
-            <b>{account.display_name ?? "Google account"}</b>
-            <span>{account.email}</span>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="signout-button"
-            disabled={logout.isPending}
-            onClick={() => logout.mutate()}
-          >
-            {logout.isPending ? "Signing out…" : "Sign out"}
-          </Button>
-          {logout.isError ? (
-            <small>Could not sign out. Try again.</small>
-          ) : null}
-        </div>
-      </aside>
-      <header className="mobile-dashboard-nav">
-        <NavLink className="mobile-brand" to="/">
-          <span className="brand-mark">V</span>
-          <span>Voker</span>
-        </NavLink>
-        <nav aria-label="Mobile navigation">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                className="mobile-menu-trigger"
-                variant="outline"
-                aria-label="Open navigation menu"
-              >
-                <Menu aria-hidden="true" size={18} /> Menu
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>
-                {account.display_name ?? account.email}
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => navigate("/")}>
-                Overview
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate("/intents")}>
-                Intents
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate("/sessions")}>
-                Sessions
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate("/agents")}>
-                Agents
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate("/setup")}>
-                Setup
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate("/settings")}>
-                Workspace settings
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => navigate("/settings#profile")}>
-                Profile settings
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={logout.isPending}
-                onSelect={() => logout.mutate()}
-                variant="destructive"
-              >
-                {logout.isPending ? "Signing out…" : "Sign out"}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </nav>
-      </header>
-      <div id="main-content" className="contents">
-        <Outlet />
       </div>
-    </div>
+    </SidebarProvider>
   );
 }

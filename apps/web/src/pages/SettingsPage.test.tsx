@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -45,7 +45,9 @@ test("creates an ingest key for the selected authorized project environment", as
 
   render(
     <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
     >
       <SettingsPage
         account={{
@@ -57,8 +59,8 @@ test("creates an ingest key for the selected authorized project environment", as
     </QueryClientProvider>,
   );
 
-  await waitFor(() => expect(screen.getByLabelText("Project")).toHaveValue("support"));
-  await waitFor(() => expect(screen.getByLabelText("Environment")).toHaveValue("staging"));
+  await screen.findByText("Support");
+  await screen.findByText("Staging");
   fireEvent.change(screen.getByLabelText("Key label for staging"), {
     target: { value: "Staging agent" },
   });

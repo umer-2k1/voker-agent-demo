@@ -247,6 +247,42 @@ def test_semantic_evaluator_persists_metrics_mixed_evidence_and_outcome(
     assert "123-45-6789" not in prompt
 
 
+def test_semantic_evaluator_can_use_a_separate_direct_deepseek_key(monkeypatch) -> None:
+    db, voice_session, _project = database()
+    settings = get_settings()
+    monkeypatch.setattr(settings, "semantic_evaluator_provider", "deepseek")
+    monkeypatch.setattr(settings, "deepseek_api_key", "deepseek-test-key")
+    monkeypatch.setattr(settings, "deepseek_model", "deepseek-flash")
+
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": semantic_json()}}],
+                "usage": {"prompt_tokens": 120, "completion_tokens": 40},
+            }
+
+    captured = {}
+
+    def post(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        return Response()
+
+    monkeypatch.setattr("voker_voice_api.semantic.httpx.post", post)
+
+    assert evaluate_session(db, session_id=voice_session.id) == 1
+    run = db.scalar(select(AnalysisRun))
+    assert run is not None
+    assert run.status == "completed"
+    assert run.model == "deepseek-flash"
+    assert captured["url"] == "https://api.deepseek.com/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer deepseek-test-key"
+    assert captured["json"]["response_format"] == {"type": "json_object"}
+
+
 def test_invalid_semantic_schema_is_retried_once_and_then_persisted(monkeypatch) -> None:
     db, voice_session, _project = database()
     settings = get_settings()

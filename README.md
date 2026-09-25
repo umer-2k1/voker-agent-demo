@@ -79,12 +79,14 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set `OPENROUTER_API_KEY` and `VOKER_API_KEY` in `.env`. `VOKER_API_KEY` comes from the [Voker setup page](http://app.voker.ai/c/-selector-/projects/1/default-project/setup). Choose any OpenRouter model that supports tool calling; the default is `openai/gpt-4.1-mini`.
+Set `OPENROUTER_API_KEY` and `VOKER_API_KEY` in `.env`. `VOKER_API_KEY` comes from the [Voker setup page](http://app.voker.ai/c/-selector-/projects/1/default-project/setup). Choose any OpenRouter model that supports tool calling; the example default is `openai/gpt-4.1-mini`.
+
+For post-call Voker Voice analysis, `SEMANTIC_EVALUATOR_PROVIDER=openrouter` keeps the existing OpenRouter model. To use a separate direct DeepSeek account for analysis, set `SEMANTIC_EVALUATOR_PROVIDER=deepseek`, `DEEPSEEK_API_KEY`, and optionally `DEEPSEEK_MODEL=deepseek-flash`. This does not change the LLM running inside your LiveKit agent.
 
 ## Run
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn example.main:app --reload
 ```
 
 Then open <http://127.0.0.1:8000/docs>, or run:

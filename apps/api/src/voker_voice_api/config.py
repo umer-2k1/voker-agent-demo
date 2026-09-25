@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,8 +17,11 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     ingest_max_body_bytes: int = 2_000_000
     ingest_max_events: int = 500
+    semantic_evaluator_provider: Literal["openrouter", "deepseek"] = "openrouter"
     openrouter_api_key: str | None = None
     openrouter_model: str | None = None
+    deepseek_api_key: str | None = None
+    deepseek_model: str = "deepseek-flash"
     cloudinary_cloud_name: str | None = None
     cloudinary_api_key: str | None = None
     cloudinary_api_secret: str | None = None

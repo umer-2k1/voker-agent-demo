@@ -1,4 +1,4 @@
-"""Bounded, evidence-validating OpenRouter semantic evaluator."""
+"""Bounded, evidence-validating semantic evaluator for OpenRouter or DeepSeek."""
 
 from __future__ import annotations
 
@@ -233,6 +233,25 @@ def _cost_micros(usage: dict[str, Any]) -> int | None:
     return round(float(cost) * 1_000_000)
 
 
+def _evaluator_configuration() -> tuple[str, str | None, str | None, str]:
+    """Return the selected evaluator without falling back across paid providers."""
+
+    settings = get_settings()
+    if settings.semantic_evaluator_provider == "deepseek":
+        return (
+            "deepseek",
+            settings.deepseek_api_key,
+            settings.deepseek_model,
+            "https://api.deepseek.com/chat/completions",
+        )
+    return (
+        "openrouter",
+        settings.openrouter_api_key,
+        settings.openrouter_model,
+        "https://openrouter.ai/api/v1/chat/completions",
+    )
+
+
 def evaluate_session(
     db: Session,
     *,
@@ -241,12 +260,12 @@ def evaluate_session(
 ) -> int:
     """Run semantic analysis while preserving visible terminal states on every path."""
 
-    settings = get_settings()
     session = db.get(VoiceSession, session_id)
     if session is None:
         return 0
     project = db.get(Project, session.project_id)
-    configured = bool(settings.openrouter_api_key and settings.openrouter_model)
+    provider, api_key, model, endpoint = _evaluator_configuration()
+    configured = bool(api_key and model)
     project_enabled = project is None or project.semantic_analysis_enabled
     enabled = configured and project_enabled
     now = datetime.now(UTC)
@@ -258,14 +277,14 @@ def evaluate_session(
             analysis_version=_next_analysis_version(db, session.id),
             prompt_version=PROMPT_VERSION,
             schema_version=SCHEMA_VERSION,
-            model=settings.openrouter_model,
+            model=model,
             started_at=now if enabled else None,
             completed_at=None if enabled else now,
         )
         db.add(analysis_run)
     else:
         analysis_run.status = "running" if enabled else "disabled"
-        analysis_run.model = settings.openrouter_model
+        analysis_run.model = model
         analysis_run.started_at = now if enabled else None
         analysis_run.completed_at = None if enabled else now
     db.flush()
@@ -273,7 +292,7 @@ def evaluate_session(
         reason = (
             "Semantic analysis is disabled for this project"
             if not project_enabled
-            else "OpenRouter evaluator is not configured"
+            else f"{provider.title()} evaluator is not configured"
         )
         analysis_run.result = {"reason": reason, "authoritative_summary": None}
         return 0
@@ -329,14 +348,23 @@ def evaluate_session(
         last_error: Exception | None = None
         for attempt in range(MAX_EVALUATOR_ATTEMPTS):
             try:
+                payload: dict[str, Any] = {
+                    "model": model,
+                    "temperature": 0,
+                    "messages": messages,
+                }
+                # DeepSeek's documented JSON mode makes malformed structured output
+                # less likely; OpenRouter deliberately retains its broadly compatible
+                # plain-content request shape.
+                if provider == "deepseek":
+                    payload["response_format"] = {"type": "json_object"}
                 response = httpx.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-                    json={
-                        "model": settings.openrouter_model,
-                        "temperature": 0,
-                        "messages": messages,
+                    endpoint,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
                     },
+                    json=payload,
                     timeout=30,
                 )
                 response.raise_for_status()

@@ -190,8 +190,11 @@ The application and test runner may load these variables directly from the repos
 DATABASE_URL=postgresql+psycopg://voker:voker_dev@localhost:5432/voker_voice
 
 # Structured post-call intelligence
+SEMANTIC_EVALUATOR_PROVIDER=openrouter
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=
+DEEPSEEK_API_KEY=
+DEEPSEEK_MODEL=deepseek-flash
 
 # LiveKit development project
 LIVEKIT_URL=
@@ -608,7 +611,7 @@ After the session completes, a PostgreSQL-backed job runs a controlled structure
 - Whether routing or a handoff was inappropriate.
 - Failure category and an evidence-based explanation.
 
-The MVP uses a bounded evaluator, not an autonomous analysis agent. It has a fixed versioned prompt, strict Pydantic result schema, low-variance settings, limited input context, validation/retry limits, and independently tracked latency/token/cost data. The analysis provider/model is configurable.
+The MVP uses a bounded evaluator, not an autonomous analysis agent. It has a fixed versioned prompt, strict Pydantic result schema, low-variance settings, limited input context, validation/retry limits, and independently tracked latency/token/cost data. The analysis provider/model is configurable: `SEMANTIC_EVALUATOR_PROVIDER=openrouter` uses the existing OpenRouter credentials and model, while `deepseek` uses the separate direct `DEEPSEEK_API_KEY` and `DEEPSEEK_MODEL`. The selected path is explicit; the service never silently falls back between paid providers.
 
 Example result:
 
@@ -850,7 +853,7 @@ docs/
   milestones.md
 ```
 
-The current demo application may remain during migration, but production code should move into explicit app/package boundaries rather than growing inside the demo module.
+The current demo application may remain during migration, but production code should move into explicit application/package boundaries rather than growing inside the demo module.
 
 ## 12. Persistence model
 
@@ -1024,5 +1027,5 @@ Future integrations must map to the canonical model rather than adding provider-
 
 - `voker-voice-impact-project-overview.md` contains the earlier Voice Impact concept and correlation examples.
 - `voker-voice-design/` is the required visual/design handoff for dashboard implementation.
-- `app/` currently contains the imperfect LangGraph/OpenRouter/Voker test agent and can provide failure fixtures during early development.
+- `example/` contains the imperfect LangGraph/OpenRouter/Voker test agent and can provide failure fixtures during early development.
 - `reference/` contains open-source implementation references. Reference code should be reviewed for ideas and license compatibility; it is not the Voker architecture source of truth.

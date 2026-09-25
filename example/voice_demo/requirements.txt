@@ -1,0 +1,2 @@
+livekit-agents[deepgram,openai]>=1.8,<2
+python-dotenv>=1,<2

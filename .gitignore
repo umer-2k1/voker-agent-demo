@@ -12,6 +12,7 @@ coverage/
 .coverage
 .mypy_cache/
 .ruff_cache/
+.playwright-mcp/
 .venv/
 .env.local
 *.egg-info/

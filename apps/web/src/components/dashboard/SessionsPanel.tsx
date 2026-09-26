@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  BookmarkPlus,
   ChevronLeft,
   ChevronRight,
   RotateCcw,
   Search,
   SlidersHorizontal,
   Waves,
+  X,
 } from "lucide-react";
 
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
@@ -124,11 +126,86 @@ function formatDuration(ms: number | null | undefined) {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  in_progress: "In progress",
+  completed: "Completed",
+  failed: "Failed",
+};
+const OUTCOME_LABELS: Record<string, string> = {
+  success: "Success",
+  failed: "Failed",
+  escalated: "Escalated",
+  abandoned: "Abandoned",
+};
+const SORT_LABELS: Record<string, string> = {
+  started_at_asc: "Oldest first",
+  errors_desc: "Most errors",
+  events_desc: "Most activity",
+};
+const GENERIC_VIEW_NAME = /^(filter|view)\s+\d+$/i;
+
+/** A saved view is only worth keeping when it actually narrows the queue. */
+function isMeaningfulFilter(filter: SavedFilter) {
+  return Boolean(
+    filter.search ||
+      filter.status ||
+      filter.source ||
+      filter.environment ||
+      filter.agent ||
+      filter.version ||
+      filter.outcome ||
+      filter.hasError ||
+      filter.startedAfter ||
+      filter.startedBefore ||
+      filter.minLatency,
+  ) || Boolean(filter.sort && filter.sort !== "started_at_desc");
+}
+
+/** Turn a stored filter into a human label such as "Failed · livekit". */
+function describeFilter(filter: SavedFilter) {
+  const parts: string[] = [];
+  if (filter.search) parts.push(`“${filter.search}”`);
+  if (filter.status) parts.push(STATUS_LABELS[filter.status] ?? filter.status);
+  if (filter.outcome) parts.push(OUTCOME_LABELS[filter.outcome] ?? filter.outcome);
+  if (filter.hasError === "true") parts.push("Has errors");
+  if (filter.hasError === "false") parts.push("No errors");
+  if (filter.source) parts.push(filter.source);
+  if (filter.agent) parts.push(`Agent: ${filter.agent}`);
+  if (filter.version) parts.push(`Version: ${filter.version}`);
+  if (filter.environment) parts.push(filter.environment);
+  if (filter.startedAfter || filter.startedBefore)
+    parts.push(`${filter.startedAfter || "…"} → ${filter.startedBefore || "…"}`);
+  if (filter.minLatency) parts.push(`≥ ${filter.minLatency} ms`);
+  if (filter.sort && filter.sort !== "started_at_desc")
+    parts.push(SORT_LABELS[filter.sort] ?? filter.sort);
+  return parts.join(" · ") || "All sessions";
+}
+
+/**
+ * Drop empty views, rename legacy auto-names ("Filter 1", "View 2") from their
+ * filters, and de-duplicate so the chip row stays trustworthy.
+ */
+function normalizeSavedFilters(rows: SavedFilter[]): SavedFilter[] {
+  const seen = new Set<string>();
+  const kept: SavedFilter[] = [];
+  for (const row of rows) {
+    if (!isMeaningfulFilter(row)) continue;
+    const needsName =
+      !row.name || GENERIC_VIEW_NAME.test(row.name.trim());
+    const name = needsName ? describeFilter(row) : row.name;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    kept.push({ ...row, name });
+  }
+  return kept.slice(-5);
+}
+
 function readSavedFilters(): SavedFilter[] {
   try {
-    return JSON.parse(
+    const rows = JSON.parse(
       localStorage.getItem(savedFiltersKey) ?? "[]",
     ) as SavedFilter[];
+    return normalizeSavedFilters(rows);
   } catch {
     return [];
   }
@@ -251,6 +328,12 @@ export function SessionsPanel({
     useState<SavedFilter[]>(readSavedFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
+  // Persist the normalised list so stale auto-named or empty views do not
+  // resurface on the next visit.
+  useEffect(() => {
+    localStorage.setItem(savedFiltersKey, JSON.stringify(savedFilters));
+  }, [savedFilters]);
+
   const triagedSessions = [...sessions].sort((left, right) => {
     const priority = (session: VoiceSession) =>
       session.error_count > 0 ? 0 : session.status === "in_progress" ? 1 : 2;
@@ -301,26 +384,48 @@ export function SessionsPanel({
     onMinLatency("");
   }
 
+  const filterSnapshot: SavedFilter = {
+    name: "",
+    search,
+    status,
+    source,
+    environment,
+    agent,
+    version,
+    outcome,
+    hasError,
+    startedAfter,
+    startedBefore,
+    minLatency,
+    sort,
+  };
+  const canSaveView = isMeaningfulFilter(filterSnapshot);
+
+  function applySavedFilter(filter: SavedFilter) {
+    onSearch(filter.search);
+    onStatus(filter.status);
+    onSource(filter.source);
+    onEnvironment(filter.environment ?? "");
+    onAgent(filter.agent ?? "");
+    onVersion(filter.version ?? "");
+    onOutcome(filter.outcome ?? "");
+    onHasError(filter.hasError ?? "");
+    onStartedAfter(filter.startedAfter ?? "");
+    onStartedBefore(filter.startedBefore ?? "");
+    onMinLatency(filter.minLatency ?? "");
+    onSort(filter.sort);
+  }
+
   function saveCurrentFilter() {
-    const name = `View ${savedFilters.length + 1}`;
-    const next = [
-      ...savedFilters,
-      {
-        name,
-        search,
-        status,
-        source,
-        environment,
-        agent,
-        version,
-        outcome,
-        hasError,
-        startedAfter,
-        startedBefore,
-        minLatency,
-        sort,
-      },
-    ].slice(-5);
+    if (!isMeaningfulFilter(filterSnapshot)) return;
+    const named = { ...filterSnapshot, name: describeFilter(filterSnapshot) };
+    const next = normalizeSavedFilters([...savedFilters, named]);
+    localStorage.setItem(savedFiltersKey, JSON.stringify(next));
+    setSavedFilters(next);
+  }
+
+  function removeSavedFilter(name: string) {
+    const next = savedFilters.filter((filter) => filter.name !== name);
     localStorage.setItem(savedFiltersKey, JSON.stringify(next));
     setSavedFilters(next);
   }
@@ -466,38 +571,48 @@ export function SessionsPanel({
             <span className="text-xs font-medium text-muted-foreground">
               Saved views
             </span>
-            {savedFilters.map((filter) => (
-              <Button
-                key={`${filter.name}-${filter.sort}`}
-                variant="secondary"
-                size="xs"
-                type="button"
-                className="rounded-full"
-                onClick={() => {
-                  onSearch(filter.search);
-                  onStatus(filter.status);
-                  onSource(filter.source);
-                  onEnvironment(filter.environment ?? "");
-                  onAgent(filter.agent ?? "");
-                  onVersion(filter.version ?? "");
-                  onOutcome(filter.outcome ?? "");
-                  onHasError(filter.hasError ?? "");
-                  onStartedAfter(filter.startedAfter ?? "");
-                  onStartedBefore(filter.startedBefore ?? "");
-                  onMinLatency(filter.minLatency ?? "");
-                  onSort(filter.sort);
-                }}
-              >
-                {filter.name}
-              </Button>
-            ))}
+            {savedFilters.length ? (
+              savedFilters.map((filter) => (
+                <span
+                  key={filter.name}
+                  className="inline-flex items-center overflow-hidden rounded-full border border-border bg-secondary text-xs text-secondary-foreground"
+                >
+                  <button
+                    type="button"
+                    className="max-w-52 truncate px-2.5 py-1 font-medium hover:bg-accent"
+                    onClick={() => applySavedFilter(filter)}
+                  >
+                    {filter.name}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Remove saved view ${filter.name}`}
+                    className="border-l border-border/70 px-1.5 py-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    onClick={() => removeSavedFilter(filter.name)}
+                  >
+                    <X className="size-3" aria-hidden="true" />
+                  </button>
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                No saved views yet.
+              </span>
+            )}
             <Button
               className="rounded-full"
               size="xs"
               variant="outline"
               type="button"
               onClick={saveCurrentFilter}
+              disabled={!canSaveView}
+              title={
+                canSaveView
+                  ? "Save the current filters"
+                  : "Set at least one filter to save a view"
+              }
             >
+              <BookmarkPlus data-icon="inline-start" />
               Save current view
             </Button>
             {hasFilters ? (

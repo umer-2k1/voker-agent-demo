@@ -117,3 +117,75 @@ test("reports search typing to the caller", () => {
 
   expect(onSearch).toHaveBeenCalledWith("call-9");
 });
+
+test("saves and removes a view named from its active filters", () => {
+  render(<SessionsPanel {...props({ status: "failed", source: "livekit" })} />);
+
+  fireEvent.click(screen.getByRole("button", { name: /save current view/i }));
+
+  const chip = screen.getByRole("button", { name: "Failed · livekit" });
+  expect(chip).toBeVisible();
+
+  fireEvent.click(
+    screen.getByRole("button", { name: /remove saved view failed · livekit/i }),
+  );
+
+  expect(
+    screen.queryByRole("button", { name: "Failed · livekit" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("No saved views yet.")).toBeVisible();
+});
+
+test("cannot save a view with no active filters", () => {
+  render(<SessionsPanel {...props()} />);
+
+  expect(
+    screen.getByRole("button", { name: /save current view/i }),
+  ).toBeDisabled();
+});
+
+test("drops empty views and renames legacy auto-names on load", () => {
+  localStorage.setItem(
+    "voker-session-filters",
+    JSON.stringify([
+      {
+        name: "Filter 1",
+        search: "",
+        status: "",
+        source: "",
+        environment: "",
+        agent: "",
+        version: "",
+        outcome: "",
+        hasError: "",
+        startedAfter: "",
+        startedBefore: "",
+        minLatency: "",
+        sort: "started_at_desc",
+      },
+      {
+        name: "Filter 2",
+        search: "",
+        status: "failed",
+        source: "",
+        environment: "",
+        agent: "",
+        version: "",
+        outcome: "",
+        hasError: "",
+        startedAfter: "",
+        startedBefore: "",
+        minLatency: "",
+        sort: "started_at_desc",
+      },
+    ]),
+  );
+
+  render(<SessionsPanel {...props()} />);
+
+  // "Filter 1" was empty and dropped; "Filter 2" becomes a readable label.
+  expect(
+    screen.queryByRole("button", { name: "Filter 1" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Failed" })).toBeVisible();
+});

@@ -28,6 +28,11 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
 }
 
 :root {
@@ -48,6 +53,13 @@
   --border: #dce8e5;
   --input: #c9ded9;
   --ring: #176258;
+  /* Chart palette — sequential teal primary, then categorical accents for
+     outcome mix, latency stages, and impact (all tested for ≥3:1 on white). */
+  --chart-1: #004d43;
+  --chart-2: #20a28b;
+  --chart-3: #4f46e5;
+  --chart-4: #d97706;
+  --chart-5: #be123c;
   font-family: "Avenir Next", Avenir, "Segoe UI", ui-sans-serif, sans-serif;
   color: var(--foreground);
   background: var(--background);

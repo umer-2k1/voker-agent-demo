@@ -12,12 +12,12 @@ export const typographyVariants = cva("", {
   variants: {
     variant: {
       display:
-        "font-display text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl",
-      h1: "font-display text-3xl font-semibold leading-tight tracking-tight text-foreground",
-      h2: "font-display text-2xl font-semibold leading-snug tracking-tight text-foreground",
+        "font-display text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl",
+      h1: "font-display text-2xl font-semibold leading-tight tracking-tight text-foreground sm:text-3xl",
+      h2: "font-display text-xl font-semibold leading-snug tracking-tight text-foreground",
       h3: "text-lg font-semibold leading-snug tracking-tight text-foreground",
       h4: "text-base font-semibold leading-snug text-foreground",
-      lead: "text-lg leading-relaxed text-muted-foreground",
+      lead: "text-base leading-relaxed text-muted-foreground sm:text-lg",
       body: "text-sm leading-relaxed text-foreground",
       muted: "text-sm leading-relaxed text-muted-foreground",
       small: "text-xs leading-normal text-muted-foreground",

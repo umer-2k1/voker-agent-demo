@@ -147,11 +147,11 @@ export function SettingsPage({ account }: { account: Account }) {
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10 md:px-10 md:py-14">
-      <header className="mb-8 border-b border-[#dce8e5] pb-7">
+      <header className="mb-6 border-b border-[#dce8e5] pb-5">
         <div>
           <Eyebrow>Workspace settings</Eyebrow>
           <Display className="mt-2 max-w-none">Manage your workspace</Display>
-          <Lead className="mt-3 max-w-2xl">
+          <Lead className="mt-2 max-w-2xl">
             Account identity and project ingest access, kept together in one
             place.
           </Lead>

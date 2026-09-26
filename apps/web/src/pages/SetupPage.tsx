@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -12,12 +12,23 @@ import type {
   ProjectSetup,
   ProviderResource,
 } from "@/components/dashboard/types";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LoadingState } from "@/components/ui/loading";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { H1, Lead } from "@/components/ui/typography";
+import {
+  Eyebrow,
+  H1,
+  H2,
+  Lead,
+  Muted,
+  Small,
+  Text,
+} from "@/components/ui/typography";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const defaultProjectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -45,6 +56,14 @@ const installCommands: Record<string, string> = {
   retell: "Connect a Retell credential and select an agent below.",
 };
 
+const PROVIDER_LABELS: Record<string, string> = {
+  sdk: "Generic Python SDK",
+  livekit: "LiveKit",
+  langgraph: "LangGraph",
+  vapi: "Vapi",
+  retell: "Retell",
+};
+
 function snippet(kind: string, environment: string) {
   if (kind === "livekit")
     return `import os\nfrom voker_voice import VokerVoice, observe_livekit\n\nvoker = VokerVoice(api_key=os.environ["VOKER_API_KEY"])\nobserver = observe_livekit(agent_session, context=ctx, agent="support-agent", version="1.0", client=voker)`;
@@ -56,6 +75,21 @@ function snippet(kind: string, environment: string) {
 }
 
 type ConnectorProvider = "vapi" | "retell";
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <div className="mt-1">{children}</div>
+    </div>
+  );
+}
 
 function ConnectorSetup({
   provider,
@@ -69,6 +103,7 @@ function ConnectorSetup({
   setup?: ProjectSetup;
 }) {
   const queryClient = useQueryClient();
+  const noun = provider === "vapi" ? "assistants" : "agents";
   const current = setup?.integrations.find(
     (item) => item.provider === provider,
   );
@@ -156,22 +191,16 @@ function ConnectorSetup({
     connect.error ?? configure.error ?? loadResources.error ?? update.error;
 
   return (
-    <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+    <div className="mt-5 flex flex-col gap-4 rounded-xl border border-border bg-muted/40 p-4">
       {current ? (
-        <div className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm sm:grid-cols-2">
-          <div>
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Connection
-            </span>
-            <p className="mt-1 font-semibold text-slate-900">
+        <div className="grid gap-4 rounded-lg border border-border bg-card p-4 sm:grid-cols-2">
+          <Field label="Connection">
+            <Text className="font-semibold capitalize">
               {current.status.replaceAll("_", " ")}
-            </p>
-          </div>
-          <div>
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Last delivery
-            </span>
-            <p className="mt-1 text-slate-700">
+            </Text>
+          </Field>
+          <Field label="Last delivery">
+            <Text className="text-muted-foreground">
               {current.last_delivery_at
                 ? new Intl.DateTimeFormat(undefined, {
                     dateStyle: "medium",
@@ -179,29 +208,23 @@ function ConnectorSetup({
                   }).format(new Date(current.last_delivery_at))
                 : "Not yet observed"}
               {` · ${current.normalization_state.replaceAll("_", " ")}`}
-            </p>
-          </div>
-          <div className="sm:col-span-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Selected {provider === "vapi" ? "assistants" : "agents"}
-            </span>
-            <p className="mt-1 text-slate-700">
+            </Text>
+          </Field>
+          <Field label={`Selected ${noun}`}>
+            <Text className="text-muted-foreground">
               {current.selected_resources.length
                 ? current.selected_resources.map((item) => item.name).join(", ")
                 : "None selected"}
-            </p>
-          </div>
+            </Text>
+          </Field>
           {current.forwarding_destinations.length ? (
-            <div className="sm:col-span-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Existing webhook forwarding
-              </span>
-              <p className="mt-1 break-all text-slate-700">
+            <Field label="Existing webhook forwarding">
+              <Text className="break-all text-muted-foreground">
                 {current.forwarding_enabled ? "Enabled" : "Disabled"} ·{" "}
                 {current.forwarding_failures} pending/failed ·{" "}
                 {current.forwarding_destinations.join(", ")}
-              </p>
-            </div>
+              </Text>
+            </Field>
           ) : null}
           <div className="flex flex-wrap gap-2 sm:col-span-2">
             {current.status === "active" ? (
@@ -230,7 +253,7 @@ function ConnectorSetup({
                 disabled={loadResources.isPending}
                 onClick={() => loadResources.mutate()}
               >
-                Load {provider === "vapi" ? "assistants" : "agents"}
+                Load {noun}
               </Button>
             ) : null}
             {current.forwarding_destinations.length ? (
@@ -265,10 +288,10 @@ function ConnectorSetup({
                 provider === "vapi" ? "Vapi private key" : "Retell API key"
               }
             />
-            <p className="text-xs leading-5 text-slate-500">
+            <Small>
               Sent only to the Voker API, validated with{" "}
               {provider === "vapi" ? "Vapi" : "Retell"}, then stored encrypted.
-            </p>
+            </Small>
           </div>
           <Button
             disabled={!apiKey || connect.isPending}
@@ -285,17 +308,17 @@ function ConnectorSetup({
       {resources.length ? (
         <div className="grid gap-4">
           <fieldset>
-            <legend className="text-sm font-semibold text-slate-900">
-              Select {provider === "vapi" ? "assistants" : "agents"}
+            <legend className="text-sm font-semibold text-foreground">
+              Select {noun}
             </legend>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {resources.map((resource) => (
                 <label
-                  className="flex cursor-pointer gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm"
+                  className="flex cursor-pointer gap-3 rounded-lg border border-border bg-card p-3 text-sm transition-colors hover:bg-accent/50"
                   key={resource.id}
                 >
                   <input
-                    className="mt-0.5 size-4 accent-emerald-700"
+                    className="mt-0.5 size-4 accent-primary"
                     type="checkbox"
                     checked={selectedIds.includes(resource.id)}
                     onChange={(event) =>
@@ -307,15 +330,17 @@ function ConnectorSetup({
                     }
                   />
                   <span>
-                    <b className="block text-slate-900">{resource.name}</b>
-                    <span className="text-xs text-slate-500">
+                    <b className="block font-medium text-foreground">
+                      {resource.name}
+                    </b>
+                    <Small>
                       {resource.version
                         ? `Version ${resource.version}`
                         : "Version unknown"}
                       {resource.existing_webhook_url
                         ? " · existing webhook preserved"
                         : ""}
-                    </span>
+                    </Small>
                   </span>
                 </label>
               ))}
@@ -332,10 +357,10 @@ function ConnectorSetup({
               onChange={(event) => setPublicBaseUrl(event.target.value)}
               placeholder="https://voice.example.com"
             />
-            <p className="text-xs text-slate-500">
+            <Small>
               The provider must be able to reach this URL. Existing webhook
               destinations are forwarded automatically.
-            </p>
+            </Small>
           </div>
           <Button
             className="w-fit"
@@ -353,12 +378,10 @@ function ConnectorSetup({
       ) : null}
 
       {pending && !connect.isPending && !configure.isPending ? (
-        <p className="mt-3 text-sm text-slate-600">
-          Loading provider resources…
-        </p>
+        <LoadingState label="Loading provider resources…" className="py-6" />
       ) : null}
       {error ? (
-        <p className="mt-3 text-sm text-red-700" role="alert">
+        <p className="text-sm text-destructive" role="alert">
           {error.message}
         </p>
       ) : null}
@@ -395,42 +418,55 @@ export function SetupPage() {
   const [path, setPath] = useState("sdk");
   const [copied, setCopied] = useState(false);
   const code = snippet(path, environment);
+  const observedStages = setup.data?.observed_stages ?? [];
+  const loadingSetup = projects.isPending || (setup.isPending && !setup.data);
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-6 py-10 md:px-10 md:py-14">
-      <header className="mb-8 flex flex-col gap-5 border-b border-emerald-950/10 pb-7 md:flex-row md:items-end md:justify-between">
-        <div>
-          <H1 className="max-w-3xl">
+    <main className="mx-auto w-full max-w-7xl px-6 py-8 md:px-10 md:py-10">
+      <header className="mb-6 flex flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
+          <Eyebrow>Setup</Eyebrow>
+          <H1 className="mt-2 max-w-3xl">
             Connect a voice pipeline and verify what Voker observes.
           </H1>
-          <Lead className="mt-3 max-w-2xl">
+          <Lead className="mt-2 max-w-2xl">
             Choose the integration boundary you own. Provider data that has not
             arrived is shown as unknown, never as a failure.
           </Lead>
         </div>
-        <div className="grid min-w-64 gap-2 sm:grid-cols-2">
-          <NativeSelect
-            aria-label="Project"
-            value={selectedProject}
-            onChange={(event) => setProjectChoice(event.target.value)}
-          >
-            {projectItems.map((project) => (
-              <option key={project.id} value={project.slug}>
-                {project.name}
-              </option>
-            ))}
-          </NativeSelect>
-          <NativeSelect
-            aria-label="Environment"
-            value={environment}
-            onChange={(event) => setEnvironmentChoice(event.target.value)}
-          >
-            {environmentItems.map((item) => (
-              <option key={item.id} value={item.slug}>
-                {item.name}
-              </option>
-            ))}
-          </NativeSelect>
+        <div className="grid min-w-64 gap-3 sm:grid-cols-2">
+          <label className="grid gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">
+              Project
+            </span>
+            <NativeSelect
+              aria-label="Project"
+              value={selectedProject}
+              onChange={(event) => setProjectChoice(event.target.value)}
+            >
+              {projectItems.map((project) => (
+                <option key={project.id} value={project.slug}>
+                  {project.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">
+              Environment
+            </span>
+            <NativeSelect
+              aria-label="Environment"
+              value={environment}
+              onChange={(event) => setEnvironmentChoice(event.target.value)}
+            >
+              {environmentItems.map((item) => (
+                <option key={item.id} value={item.slug}>
+                  {item.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
         </div>
       </header>
 
@@ -439,46 +475,52 @@ export function SetupPage() {
           {setup.error.message}. Refresh to try again.
         </p>
       ) : null}
-      <section
-        className="mb-6 grid gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-3"
-        aria-label="Integration observation state"
-      >
-        <div className="bg-white p-5">
-          <span className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-            <RadioTower size={15} /> Last event
-          </span>
-          <b className="mt-2 block text-sm text-slate-800">
-            {setup.data?.last_received_event_at
-              ? new Intl.DateTimeFormat(undefined, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                }).format(new Date(setup.data.last_received_event_at))
-              : "Not yet observed"}
-          </b>
-        </div>
-        <div className="bg-white p-5 sm:col-span-2">
-          <span className="text-xs font-semibold text-slate-500">
-            Observed pipeline stages
-          </span>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {setup.data?.observed_stages.length ? (
-              setup.data.observed_stages.map((stage) => (
-                <span
-                  className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800"
-                  key={stage}
-                >
-                  <CheckCircle2 size={13} /> {stage.toUpperCase()}
-                </span>
-              ))
-            ) : (
-              <span className="inline-flex items-center gap-2 text-sm text-slate-600">
-                <CircleDashed size={15} /> Waiting for the first event; no
-                integration failure has been detected.
+
+      {loadingSetup ? (
+        <LoadingState label="Loading setup state…" className="py-16" />
+      ) : (
+        <section
+          className="mb-6 grid gap-4 sm:grid-cols-3"
+          aria-label="Integration observation state"
+        >
+          <Card className="shadow-none">
+            <CardContent className="p-4">
+              <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <RadioTower className="size-4" /> Last event
               </span>
-            )}
-          </div>
-        </div>
-      </section>
+              <Text className="mt-2 font-semibold">
+                {setup.data?.last_received_event_at
+                  ? new Intl.DateTimeFormat(undefined, {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    }).format(new Date(setup.data.last_received_event_at))
+                  : "Not yet observed"}
+              </Text>
+            </CardContent>
+          </Card>
+          <Card className="shadow-none sm:col-span-2">
+            <CardContent className="p-4">
+              <span className="text-xs font-medium text-muted-foreground">
+                Observed pipeline stages
+              </span>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {observedStages.length ? (
+                  observedStages.map((stage) => (
+                    <Badge variant="success" key={stage}>
+                      <CheckCircle2 className="size-3" /> {stage.toUpperCase()}
+                    </Badge>
+                  ))
+                ) : (
+                  <Text className="inline-flex items-center gap-2 text-muted-foreground">
+                    <CircleDashed className="size-4" /> Waiting for the first
+                    event; no integration failure has been detected.
+                  </Text>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       <Tabs
         value={path}
@@ -486,39 +528,29 @@ export function SetupPage() {
           setPath(value);
           setCopied(false);
         }}
-        className="rounded-xl border border-slate-200 bg-white p-5"
+        className="gap-4"
       >
         <TabsList
-          className="h-auto w-full flex-wrap justify-start"
+          className="h-auto w-full flex-wrap justify-start gap-1"
           variant="line"
         >
-          {[
-            ["sdk", "Python SDK"],
-            ["livekit", "LiveKit"],
-            ["langgraph", "LangGraph"],
-            ["vapi", "Vapi"],
-            ["retell", "Retell"],
-          ].map(([value, label]) => (
+          {Object.keys(installCommands).map((value) => (
             <TabsTrigger value={value} key={value}>
-              {label}
+              {PROVIDER_LABELS[value] ?? value}
             </TabsTrigger>
           ))}
         </TabsList>
         {Object.keys(installCommands).map((kind) => (
           <TabsContent
             value={kind}
-            className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,.7fr)_minmax(0,1.3fr)]"
+            className="mt-2 grid gap-5 rounded-xl border border-border bg-card p-5 lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]"
             key={kind}
           >
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900">
-                {kind === "sdk"
-                  ? "Generic Python SDK"
-                  : kind[0].toUpperCase() + kind.slice(1)}
-              </h2>
-              <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+            <div className="min-w-0">
+              <H2>{PROVIDER_LABELS[kind] ?? kind}</H2>
+              <Muted className="mt-2 max-w-xl">
                 {installCommands[kind]}
-              </p>
+              </Muted>
               {kind === "vapi" || kind === "retell" ? (
                 <ConnectorSetup
                   key={`${selectedProject}-${kind}`}
@@ -531,7 +563,7 @@ export function SetupPage() {
             </div>
             <div className="min-w-0">
               <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-xs font-semibold text-slate-500">
+                <span className="text-xs font-medium text-muted-foreground">
                   {environment} configuration
                 </span>
                 <Button
@@ -548,7 +580,7 @@ export function SetupPage() {
               </div>
               <pre
                 tabIndex={0}
-                className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-xs leading-6 text-slate-100"
+                className="max-h-96 overflow-auto rounded-lg bg-foreground p-4 text-xs leading-6 whitespace-pre-wrap text-background"
               >
                 {code}
               </pre>

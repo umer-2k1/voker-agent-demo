@@ -244,7 +244,8 @@ def test_semantic_evaluator_persists_metrics_mixed_evidence_and_outcome(
     assert run.evaluator_latency_ms is not None
     assert run.result is not None
     assert run.result["intent"] == "Check order status"
-    assert voice_session.metadata_["intent"] == "Check order status"
+    assert voice_session.metadata_["intent"] == "unknown"
+    assert voice_session.metadata_["intent_raw"] == "Check order status"
     finding = db.scalar(select(Finding))
     assert finding is not None
     assert finding.certainty == "inferred_contributing_factor"

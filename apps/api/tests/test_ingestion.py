@@ -202,7 +202,8 @@ def test_intent_and_explicit_resolution_are_projected_onto_the_session() -> None
     session = db.scalar(select(VoiceSession).where(VoiceSession.external_session_id == "intent-call"))
     assert batch.accepted == 3
     assert session is not None
-    assert session.metadata_["intent"] == "appointment_management"
+    assert session.metadata_["intent"] == "unknown"
+    assert session.metadata_["intent_raw"] == "appointment_management"
     assert session.metadata_["intent_confidence"] == 0.99
     assert session.metadata_["intent_source"] == "route_tool"
     assert session.metadata_["integration"] == "livekit"

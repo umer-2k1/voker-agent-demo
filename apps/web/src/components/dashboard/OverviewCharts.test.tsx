@@ -14,6 +14,32 @@ function analytics(overrides: Partial<Analytics> = {}): Analytics {
       { date: "2026-09-01", sessions: 2 },
       { date: "2026-09-03", sessions: 1 },
     ],
+    rates_trend: [
+      {
+        date: "2026-09-01",
+        sessions: 2,
+        known_outcomes: 2,
+        resolution_rate: 0.5,
+        correction_rate: 0,
+      },
+      {
+        date: "2026-09-03",
+        sessions: 1,
+        known_outcomes: 0,
+        resolution_rate: null,
+        correction_rate: 1,
+      },
+    ],
+    intent_comparisons: [
+      {
+        label: "Reschedule appointment",
+        sessions: 3,
+        known_outcomes: 2,
+        resolved: 1,
+        resolution_rate: 0.5,
+        session_ids: ["session-1"],
+      },
+    ],
     outcomes: { success: 3, resolved: 1, abandoned: 2 },
     metric_coverage: {
       outcomes: { observed: 6, total: 10 },
@@ -55,16 +81,22 @@ test("renders each chart with an accessible summary", () => {
   renderCharts(analytics());
 
   expect(screen.getByRole("heading", { name: "Call volume" })).toBeVisible();
+  expect(
+    screen.getByRole("heading", { name: "Correction vs resolution over time" }),
+  ).toBeVisible();
   expect(screen.getByRole("heading", { name: "Outcome mix" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "Latency by stage" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Intent categories" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "Voice issues by impact" })).toBeVisible();
 
   const images = screen.getAllByRole("img");
   expect(images.map((node) => node.getAttribute("aria-label"))).toEqual(
     expect.arrayContaining([
       expect.stringMatching(/Bar chart of call volume: 3 sessions over 3 days/),
+      expect.stringMatching(/Line chart of correction and resolution rates/),
       expect.stringMatching(/Donut chart of outcomes: Resolved 4, Abandoned 2/),
       expect.stringMatching(/Bar chart of latency by stage/),
+      expect.stringMatching(/Intent category mix across 3 calls/),
       expect.stringMatching(/Bar chart of voice issue impact/),
     ]),
   );
@@ -82,6 +114,8 @@ test("explains absent data instead of drawing an empty chart", () => {
   renderCharts(
     analytics({
       volume_trend: [],
+      rates_trend: [],
+      intent_comparisons: [],
       outcomes: {},
       latency: {},
       voice_issue_impacts: [],

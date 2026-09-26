@@ -14,7 +14,9 @@ async function scan(context, route, label) {
   const page = await context.newPage();
   try {
     await page.goto(`${base}${route}`, { waitUntil: "domcontentloaded", timeout: 30000 });
-    await page.waitForTimeout(2500);
+    // Wait for the lazy route to render its heading before auditing.
+    await page.waitForSelector("h1", { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1500);
     const results = await new AxeBuilder({ page }).analyze();
     const violations = results.violations;
     total += violations.length;

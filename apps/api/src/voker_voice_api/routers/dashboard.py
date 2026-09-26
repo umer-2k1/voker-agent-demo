@@ -460,7 +460,9 @@ def session_summary(session: VoiceSession, error_count: int, event_count: int) -
             else None
         ),
         "intent_source": (
-            metadata.get("intent_source") if isinstance(metadata.get("intent_source"), str) else None
+            metadata.get("intent_source")
+            if isinstance(metadata.get("intent_source"), str)
+            else None
         ),
         "started_at": timestamp(session.started_at),
         "ended_at": timestamp(session.ended_at),
@@ -913,6 +915,17 @@ def analytics_overview(
         .limit(10_000)
     ).all()
 
+    # Sessions with any explicit correction event, used for the per-day rate
+    # series below without re-querying inside the aggregation loop.
+    correction_sessions = set(
+        db.scalars(
+            select(Event.session_id)
+            .join(filtered, Event.session_id == filtered.c.id)
+            .where(Event.event_type.startswith("correction."))
+            .distinct()
+        )
+    )
+
     def intent_label(metadata: Any) -> str:
         value = metadata.get("intent") if isinstance(metadata, dict) else None
         if not isinstance(value, str) or not value.strip():
@@ -921,6 +934,7 @@ def analytics_overview(
 
     intent_buckets: dict[str, dict[str, Any]] = {}
     volume_buckets: dict[str, int] = {}
+    trend_buckets: dict[str, dict[str, int]] = {}
     interruption_resolution_points = []
     for row in visual_rows:
         label = intent_label(row.metadata)
@@ -938,7 +952,17 @@ def analytics_overview(
 
         day = row.started_at.date().isoformat()
         volume_buckets[day] = volume_buckets.get(day, 0) + 1
+        bucket = trend_buckets.setdefault(
+            day,
+            {"sessions": 0, "known_outcomes": 0, "resolved": 0, "corrections": 0},
+        )
+        bucket["sessions"] += 1
+        if row.id in correction_sessions:
+            bucket["corrections"] += 1
         if row.outcome is not None:
+            bucket["known_outcomes"] += 1
+            if row.outcome in resolved_values:
+                bucket["resolved"] += 1
             interruption_resolution_points.append(
                 {
                     "session_id": str(row.id),
@@ -1197,6 +1221,24 @@ def analytics_overview(
         "voice_impact_cohorts": voice_cohorts,
         "volume_trend": [
             {"date": day, "sessions": sessions} for day, sessions in sorted(volume_buckets.items())
+        ],
+        "rates_trend": [
+            {
+                "date": day,
+                "sessions": bucket["sessions"],
+                "known_outcomes": bucket["known_outcomes"],
+                "resolution_rate": (
+                    bucket["resolved"] / bucket["known_outcomes"]
+                    if bucket["known_outcomes"]
+                    else None
+                ),
+                "correction_rate": (
+                    bucket["corrections"] / bucket["sessions"]
+                    if bucket["sessions"]
+                    else None
+                ),
+            }
+            for day, bucket in sorted(trend_buckets.items())
         ],
         "intent_comparisons": intent_comparisons,
         "interruption_resolution_points": interruption_resolution_points,

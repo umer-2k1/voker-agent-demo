@@ -254,7 +254,12 @@ def test_analytics_uses_filtered_aggregates_and_links_representative_sessions() 
     assert result["latency"]["llm"]["p90_ms"] == 254
     assert result["voice_impact_cohorts"]["fast_stt"]["sample_size"] == 6
     assert result["volume_trend"] == [{"date": "2026-09-21", "sessions": 6}]
-    assert result["intent_comparisons"][0]["label"] == "Unclassified"
+    assert result["rates_trend"][0]["date"] == "2026-09-21"
+    assert result["rates_trend"][0]["sessions"] == 6
+    assert result["rates_trend"][0]["known_outcomes"] == 6
+    assert result["rates_trend"][0]["resolution_rate"] == 4 / 6
+    assert "correction_rate" in result["rates_trend"][0]
+    assert result["intent_comparisons"][0]["label"] == "Unknown intent"
     assert result["intent_comparisons"][0]["resolution_rate"] == 4 / 6
     assert len(result["interruption_resolution_points"]) == 6
     assert result["interruption_resolution_points"][0]["session_id"] == str(sessions[0].id)

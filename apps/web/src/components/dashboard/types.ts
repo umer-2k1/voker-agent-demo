@@ -54,6 +54,13 @@ export type Analytics = {
     } | null
   >;
   volume_trend: Array<{ date: string; sessions: number }>;
+  rates_trend: Array<{
+    date: string;
+    sessions: number;
+    known_outcomes: number;
+    resolution_rate: number | null;
+    correction_rate: number | null;
+  }>;
   intent_comparisons: ComparisonItem[];
   interruption_resolution_points: Array<{
     session_id: string;

@@ -5,6 +5,8 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Line,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -24,6 +26,16 @@ const GREEN = "#20a28b";
 const INDIGO = "#4f46e5";
 const AMBER = "#d97706";
 const ROSE = "#be123c";
+const CATEGORY_PALETTE = [
+  GREEN,
+  INDIGO,
+  AMBER,
+  ROSE,
+  "#0e7490",
+  "#7c3aed",
+  "#15803d",
+  "#b45309",
+];
 
 const STAGE_ORDER = ["stt", "llm", "tool", "tts", "voice"] as const;
 const STAGE_LABELS: Record<string, string> = {
@@ -203,6 +215,139 @@ function VolumeTrendCard({ rows }: { rows: Analytics["volume_trend"] }) {
         </>
       ) : (
         <ChartEmpty>Call volume appears once sessions arrive.</ChartEmpty>
+      )}
+    </Card>
+  );
+}
+
+function RatesTrendCard({ rows }: { rows: Analytics["rates_trend"] }) {
+  const data = useMemo(
+    () =>
+      (rows ?? []).map((row) => ({
+        date: row.date,
+        resolution:
+          row.resolution_rate == null
+            ? null
+            : Math.round(row.resolution_rate * 1000) / 10,
+        correction:
+          row.correction_rate == null
+            ? null
+            : Math.round(row.correction_rate * 1000) / 10,
+        sessions: row.sessions,
+      })),
+    [rows],
+  );
+  const hasRates = data.some(
+    (row) => row.resolution != null || row.correction != null,
+  );
+  return (
+    <Card className="chart-card shadow-none">
+      <h2>Correction vs resolution over time</h2>
+      <p className="chart-description">
+        Share of sessions resolved and share with an explicit caller correction,
+        per day. Days without a known outcome stay out of the resolution line.
+      </p>
+      {hasRates ? (
+        <>
+          <div className="chart-legend" aria-hidden="true">
+            <span>
+              <i style={{ background: GREEN }} /> Resolution rate
+            </span>
+            <span>
+              <i style={{ background: AMBER }} /> Correction rate
+            </span>
+          </div>
+          <div
+            className="rechart-frame [&_svg]:outline-none"
+            role="img"
+            aria-label={`Line chart of correction and resolution rates: ${data
+              .map(
+                (row) =>
+                  `${formatDay(row.date)} resolution ${row.resolution == null ? "not measured" : `${row.resolution}%`}, correction ${row.correction == null ? "not measured" : `${row.correction}%`}`,
+              )
+              .join("; ")}`}
+          >
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart
+                accessibilityLayer={false}
+                data={data}
+                margin={{ top: 8, right: 12, bottom: 0, left: -16 }}
+              >
+                <CartesianGrid stroke={GRID} vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={(value) => formatDay(String(value))}
+                  tick={{ fontSize: 11, fill: AXIS }}
+                  tickLine={false}
+                  axisLine={{ stroke: GRID }}
+                  minTickGap={16}
+                />
+                <YAxis
+                  domain={[0, 100]}
+                  unit="%"
+                  tick={{ fontSize: 11, fill: AXIS }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={44}
+                />
+                <Tooltip
+                  labelFormatter={(value) => formatDay(String(value))}
+                  formatter={(value, name) => [
+                    value == null ? "Not measured" : `${value}%`,
+                    name === "resolution" ? "Resolution" : "Correction",
+                  ]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="resolution"
+                  stroke={GREEN}
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  connectNulls
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="correction"
+                  stroke={AMBER}
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  connectNulls
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <table className="sr-only">
+            <caption>Correction and resolution rates by day</caption>
+            <thead>
+              <tr>
+                <th scope="col">Day</th>
+                <th scope="col">Sessions</th>
+                <th scope="col">Resolution rate</th>
+                <th scope="col">Correction rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((row) => (
+                <tr key={row.date}>
+                  <td>{formatDay(row.date)}</td>
+                  <td>{row.sessions}</td>
+                  <td>
+                    {row.resolution == null ? "Not measured" : `${row.resolution}%`}
+                  </td>
+                  <td>
+                    {row.correction == null ? "Not measured" : `${row.correction}%`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : (
+        <ChartEmpty>
+          Rate trends appear once calls report outcomes or corrections.
+        </ChartEmpty>
       )}
     </Card>
   );
@@ -549,6 +694,116 @@ function VoiceIssuesCard({
   );
 }
 
+function IntentCategoriesCard({
+  intents,
+}: {
+  intents: Analytics["intent_comparisons"];
+}) {
+  const ranked = useMemo(
+    () =>
+      [...(intents ?? [])]
+        .filter((item) => item.sessions > 0)
+        .sort((a, b) => b.sessions - a.sessions),
+    [intents],
+  );
+  const total = ranked.reduce((sum, item) => sum + item.sessions, 0);
+  const segments = useMemo(() => {
+    if (!total) return [];
+    const rows = ranked.slice(0, 7).map((item, index) => ({
+      label: item.label,
+      value: item.sessions,
+      rate: item.resolution_rate,
+      color: CATEGORY_PALETTE[index % CATEGORY_PALETTE.length],
+    }));
+    const rest = ranked.slice(7).reduce((sum, item) => sum + item.sessions, 0);
+    if (rest > 0)
+      rows.push({ label: "Other", value: rest, rate: null, color: "#94a3b8" });
+    return rows;
+  }, [ranked, total]);
+
+  return (
+    <Card className="chart-card shadow-none">
+      <h2>Intent categories</h2>
+      <p className="chart-description">
+        Share of calls by routed intent across the selected filters. Resolution
+        is shown per category where a known outcome exists.
+      </p>
+      {total ? (
+        <>
+          <div
+            className="flex h-3 w-full overflow-hidden rounded-full"
+            role="img"
+            aria-label={`Intent category mix across ${total} calls: ${segments
+              .map((segment) => `${segment.label} ${Math.round((segment.value / total) * 100)}%`)
+              .join(", ")}`}
+          >
+            {segments.map((segment) => (
+              <span
+                key={segment.label}
+                style={{
+                  width: `${(segment.value / total) * 100}%`,
+                  background: segment.color,
+                }}
+                title={`${segment.label}: ${segment.value} calls`}
+              />
+            ))}
+          </div>
+          <ul className="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+            {segments.map((segment) => (
+              <li
+                className="flex items-center justify-between gap-3 text-sm"
+                key={segment.label}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <i
+                    aria-hidden="true"
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ background: segment.color }}
+                  />
+                  <span className="truncate" title={segment.label}>
+                    {segment.label}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                  {Math.round((segment.value / total) * 100)}%
+                  {segment.rate != null ? ` · ${formatRate(segment.rate)}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <table className="sr-only">
+            <caption>Intent categories</caption>
+            <thead>
+              <tr>
+                <th scope="col">Intent</th>
+                <th scope="col">Calls</th>
+                <th scope="col">Share</th>
+                <th scope="col">Resolution rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {segments.map((segment) => (
+                <tr key={segment.label}>
+                  <td>{segment.label}</td>
+                  <td>{segment.value}</td>
+                  <td>{Math.round((segment.value / total) * 100)}%</td>
+                  <td>
+                    {segment.rate == null ? "Not measured" : formatRate(segment.rate)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : (
+        <ChartEmpty>
+          Intent categories appear once calls report a routed intent.
+        </ChartEmpty>
+      )}
+    </Card>
+  );
+}
+
 export function OverviewCharts({ analytics }: { analytics: Analytics | null }) {
   if (!analytics) return null;
   return (
@@ -559,11 +814,17 @@ export function OverviewCharts({ analytics }: { analytics: Analytics | null }) {
       <div className="xl:col-span-2">
         <VolumeTrendCard rows={analytics.volume_trend ?? []} />
       </div>
+      <div className="xl:col-span-2">
+        <RatesTrendCard rows={analytics.rates_trend ?? []} />
+      </div>
       <OutcomeMixCard
         outcomes={analytics.outcomes ?? {}}
         coverage={analytics.metric_coverage?.outcomes ?? { observed: 0, total: 0 }}
       />
       <LatencyByStageCard latency={analytics.latency ?? {}} />
+      <div className="xl:col-span-2">
+        <IntentCategoriesCard intents={analytics.intent_comparisons ?? []} />
+      </div>
       <div className="xl:col-span-2">
         <VoiceIssuesCard issues={analytics.voice_issue_impacts ?? []} />
       </div>

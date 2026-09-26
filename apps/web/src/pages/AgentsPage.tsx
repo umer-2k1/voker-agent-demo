@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/loading";
 import { H1 } from "@/components/ui/typography";
 import { loadProjects, resolveProjectSlug } from "@/lib/projects";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const preferredProjectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -24,6 +25,7 @@ async function loadAnalytics(projectSlug: string) {
 export function AgentsPage() {
   const { agent: encodedAgent } = useParams();
   const selectedName = encodedAgent ? decodeURIComponent(encodedAgent) : null;
+  useDocumentTitle(selectedName ? `Agent · ${selectedName}` : "Agents");
   const projectsQuery = useQuery({
     queryKey: ["projects"],
     queryFn: () => loadProjects(apiBaseUrl),

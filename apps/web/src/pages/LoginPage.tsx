@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 
@@ -30,6 +31,7 @@ function GoogleMark() {
 export function LoginPage() {
   const googleLoginUrl = `${apiBaseUrl}/auth/google/login`;
   const [isRedirecting, setIsRedirecting] = useState(false);
+  useDocumentTitle("Sign in");
 
   function beginGoogleSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Display, Eyebrow, H2, Lead } from "@/components/ui/typography";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const defaultProjectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -77,6 +78,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function SettingsPage({ account }: { account: Account }) {
+  useDocumentTitle("Workspace settings");
   const queryClient = useQueryClient();
   const [projectChoice, setProjectChoice] = useState(defaultProjectSlug);
   const [environmentChoice, setEnvironmentChoice] = useState("development");

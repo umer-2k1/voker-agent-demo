@@ -29,6 +29,7 @@ import {
   Small,
   Text,
 } from "@/components/ui/typography";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const defaultProjectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -390,6 +391,7 @@ function ConnectorSetup({
 }
 
 export function SetupPage() {
+  useDocumentTitle("Setup");
   const projects = useQuery({
     queryKey: ["projects"],
     queryFn: () =>

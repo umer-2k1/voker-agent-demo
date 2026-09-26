@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BrowserRouter,
@@ -16,7 +16,7 @@ import {
 import { AppShell } from "@/components/dashboard/AppShell";
 import { SessionsPanel } from "@/components/dashboard/SessionsPanel";
 import { OverviewPanel } from "@/components/dashboard/OverviewPanel";
-import { TracePanel } from "@/components/dashboard/TracePanel";
+import { ErrorBoundary } from "@/components/error-boundary";
 import type {
   Analytics,
   Overview,
@@ -30,11 +30,30 @@ import { Button } from "@/components/ui/button";
 import { LoadingState, PageLoader } from "@/components/ui/loading";
 import { Eyebrow, H1 } from "@/components/ui/typography";
 import type { Account } from "@/pages/AccountPage";
-import { LoginPage } from "@/pages/LoginPage";
-import { SettingsPage } from "@/pages/SettingsPage";
-import { SetupPage } from "@/pages/SetupPage";
-import { AgentsPage } from "@/pages/AgentsPage";
 import { loadProjects, resolveProjectSlug } from "@/lib/projects";
+import { useDocumentTitle } from "@/lib/use-document-title";
+
+const LoginPage = lazy(() =>
+  import("@/pages/LoginPage").then((module) => ({ default: module.LoginPage })),
+);
+const SetupPage = lazy(() =>
+  import("@/pages/SetupPage").then((module) => ({ default: module.SetupPage })),
+);
+const SettingsPage = lazy(() =>
+  import("@/pages/SettingsPage").then((module) => ({
+    default: module.SettingsPage,
+  })),
+);
+const AgentsPage = lazy(() =>
+  import("@/pages/AgentsPage").then((module) => ({
+    default: module.AgentsPage,
+  })),
+);
+const TracePanel = lazy(() =>
+  import("@/components/dashboard/TracePanel").then((module) => ({
+    default: module.TracePanel,
+  })),
+);
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const preferredProjectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -111,6 +130,13 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
     preferredProjectSlug,
   );
   const selectedSessionId = routeSessionId;
+  useDocumentTitle(
+    sessionsOnly
+      ? selectedSessionId
+        ? "Session trace"
+        : "Sessions"
+      : "Overview",
+  );
   const overviewQuery = useQuery({
     queryKey: ["overview", projectSlug],
     queryFn: () =>
@@ -510,8 +536,10 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
 
 export function App() {
   return (
-    <BrowserRouter>
-      <Routes>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Suspense fallback={<PageLoader label="Loading…" />}>
+          <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<RequireDashboardUser />}>
           <Route element={<DashboardLayout />}>
@@ -534,8 +562,10 @@ export function App() {
           </Route>
         </Route>
         <Route path="*" element={<Navigate replace to="/" />} />
-      </Routes>
-    </BrowserRouter>
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

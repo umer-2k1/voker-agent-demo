@@ -1,5 +1,6 @@
+import { lazy, Suspense } from "react";
+
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
-import { OverviewCharts } from "@/components/dashboard/OverviewCharts";
 import type { Analytics, Overview } from "@/components/dashboard/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,12 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertCircle, ArrowRight, Info, Radio, Waves } from "lucide-react";
 import { Link } from "react-router-dom";
+
+const OverviewCharts = lazy(() =>
+  import("@/components/dashboard/OverviewCharts").then((module) => ({
+    default: module.OverviewCharts,
+  })),
+);
 
 function formatLatency(value: number | null | undefined) { return value == null ? "Not measured" : value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${Math.round(value)} ms`; }
 function formatRate(value: number | null | undefined) { return value == null ? "Not measured" : `${Math.round(value * 100)}%`; }
@@ -37,7 +44,9 @@ export function OverviewPanel({ overview, analytics, findingsCount, loading, env
         <div className="grid grid-cols-2 gap-3"><MetricCard label="Calls observed" value={total.toLocaleString()} coverage={`${analytics?.completed_session_count ?? 0} terminal sessions`} detail="Calls with at least one telemetry event in the selected period." /><MetricCard label="Resolution" value={formatRate(analytics?.rates.resolution)} coverage={<Coverage {...(coverage?.outcomes ?? { observed: 0, total })} noun="outcomes" />} detail="Resolved outcomes divided by sessions with a known outcome." /><MetricCard label="STT p90" value={formatLatency(analytics?.latency.stt?.p90_ms)} coverage={<Coverage {...(coverage?.stt_latency ?? { observed: 0, total })} />} detail="90th percentile of recorded speech-to-text spans. It is never shown as zero when spans are absent." /><MetricCard label="Human escalation" value={formatRate(analytics?.rates.escalation)} coverage={<Coverage {...(coverage?.escalations ?? { observed: 0, total })} noun="escalations" />} detail="Only terminal outcomes explicitly marked escalated. Automated agent handoffs are separate." /></div>
       </section>
       <Card className="border-amber-200 bg-amber-50/60 shadow-none"><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-3"><Waves className="mt-0.5 size-5 text-amber-700" /><div><p className="font-medium text-foreground">Data confidence</p><p className="text-sm text-muted-foreground">Comparisons need five measured outcomes per group to avoid presenting random variation as a trend. Per-session evidence is always available.</p></div></div><Button asChild variant="outline" size="sm"><Link to="/sessions">Review sessions <ArrowRight data-icon="inline-end" /></Link></Button></CardContent></Card>
-      <OverviewCharts analytics={analytics} />
+      <Suspense fallback={<LoadingSkeleton rows={4} />}>
+        <OverviewCharts analytics={analytics} />
+      </Suspense>
       <section className="grid gap-4 xl:grid-cols-2" aria-label="Resolution analysis"><IntentResolution intents={analytics?.intent_comparisons ?? []} /><InterruptionResolution points={analytics?.interruption_resolution_points ?? []} /></section>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Trace signal coverage"><MetricCard label="Caller corrections" value={formatRate(analytics?.rates.correction)} coverage={`${analytics?.voice_behavior.correction_sessions ?? 0} explicit correction events`} detail="Corrections are counted only from explicit adapter events, never inferred from silence." /><MetricCard label="Automated handoffs" value={formatRate(analytics?.rates.handoff)} coverage={`${analytics?.voice_behavior.handoff_sessions ?? 0} session events`} detail="Agent-to-agent transfers are operational handoffs, not human escalations." /><MetricCard label="Interrupted calls" value={`${analytics?.voice_behavior.interruption_sessions ?? 0}`} coverage={`${analytics?.voice_behavior.talk_over_sessions ?? 0} talk-over signals`} detail="A call is counted once when at least one interruption event was recorded." /><MetricCard label="Dead-air calls" value={`${analytics?.voice_behavior.dead_air_sessions ?? 0}`} coverage="Event or measured turn gap" detail="Dead air is detected from explicit events or a measured gap between turns." /></section>
       <section className="grid gap-4 xl:grid-cols-2" aria-label="Investigation queues"><InvestigationQueue title="Needs investigation" items={(analytics?.insights ?? []).filter((item) => item.count > 0)} empty="No recurring issues are currently recorded." /><InvestigationQueue title="Agent and provider evidence" items={comparisonItems(analytics)} empty="Comparisons appear once agents or providers report outcomes." /></section>

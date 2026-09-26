@@ -30,6 +30,7 @@ import {
   Text,
 } from "@/components/ui/typography";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { toast } from "sonner";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const defaultProjectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -574,6 +575,7 @@ export function SetupPage() {
                   onClick={() => {
                     void navigator.clipboard?.writeText(code);
                     setCopied(true);
+                    toast.success("Configuration copied");
                     window.setTimeout(() => setCopied(false), 1800);
                   }}
                 >

@@ -10,6 +10,7 @@ import {
   Zap,
 } from "lucide-react";
 import WaveSurfer from "wavesurfer.js";
+import { toast } from "sonner";
 
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
 import type { Trace } from "@/components/dashboard/types";
@@ -554,6 +555,7 @@ function TracePanelContent({
           onClick={() => {
             void navigator.clipboard?.writeText(window.location.href);
             setShareCopied(true);
+            toast.success("Session link copied");
             window.setTimeout(() => setShareCopied(false), 1800);
           }}
         >

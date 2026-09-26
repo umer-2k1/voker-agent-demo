@@ -28,6 +28,7 @@ import type {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingState, PageLoader } from "@/components/ui/loading";
+import { Toaster } from "@/components/ui/sonner";
 import { Eyebrow, H1 } from "@/components/ui/typography";
 import type { Account } from "@/pages/AccountPage";
 import { loadProjects, resolveProjectSlug } from "@/lib/projects";
@@ -565,6 +566,7 @@ export function App() {
           </Routes>
         </Suspense>
       </BrowserRouter>
+      <Toaster position="top-right" />
     </ErrorBoundary>
   );
 }

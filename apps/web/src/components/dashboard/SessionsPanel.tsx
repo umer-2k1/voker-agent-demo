@@ -3,12 +3,14 @@ import {
   BookmarkPlus,
   ChevronLeft,
   ChevronRight,
+  Download,
   RotateCcw,
   Search,
   SlidersHorizontal,
   Waves,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
 import type { SessionPage, VoiceSession } from "@/components/dashboard/types";
@@ -423,12 +425,59 @@ export function SessionsPanel({
     const next = normalizeSavedFilters([...savedFilters, named]);
     localStorage.setItem(savedFiltersKey, JSON.stringify(next));
     setSavedFilters(next);
+    const saved = next.find((filter) => filter.name === named.name);
+    toast.success(`Saved view “${saved?.name ?? named.name}”`);
   }
 
   function removeSavedFilter(name: string) {
     const next = savedFilters.filter((filter) => filter.name !== name);
     localStorage.setItem(savedFiltersKey, JSON.stringify(next));
     setSavedFilters(next);
+    toast(`Removed view “${name}”`);
+  }
+
+  function exportSessions() {
+    if (!sessions.length) return;
+    const header = [
+      "external_session_id",
+      "status",
+      "outcome",
+      "intent",
+      "source",
+      "environment",
+      "started_at",
+      "duration_ms",
+      "errors",
+      "events",
+    ];
+    const rows = sessions.map((s) => [
+      s.external_session_id,
+      s.status,
+      s.outcome ?? "",
+      s.intent ?? "",
+      s.source,
+      s.environment ?? "",
+      s.started_at,
+      s.duration_ms ?? "",
+      s.error_count,
+      s.event_count,
+    ]);
+    const cell = (value: string | number) => {
+      const text = String(value);
+      return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+    };
+    const csv = [header, ...rows]
+      .map((row) => row.map(cell).join(","))
+      .join("\n");
+    const url = URL.createObjectURL(
+      new Blob([csv], { type: "text/csv;charset=utf-8" }),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `voker-sessions-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${sessions.length} sessions`);
   }
 
   return (
@@ -443,10 +492,23 @@ export function SessionsPanel({
               : `${page.total} captured sessions are healthy.`}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2" aria-label="Session review summary">
+        <div
+          className="flex flex-wrap items-center gap-2"
+          aria-label="Session review summary"
+        >
           <StatChip tone="bg-destructive" label="need review" value={needsReview} />
           <StatChip tone="bg-warning" label="in progress" value={inProgress} />
           <StatChip tone="bg-success" label="complete" value={complete} />
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            disabled={!sessions.length}
+            onClick={exportSessions}
+          >
+            <Download data-icon="inline-start" />
+            Export
+          </Button>
         </div>
       </CardHeader>
 

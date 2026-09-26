@@ -132,12 +132,16 @@ function VolumeTrendCard({ rows }: { rows: Analytics["volume_trend"] }) {
       </p>
       {data.length ? (
         <div
-          className="rechart-frame"
+          className="rechart-frame [&_svg]:outline-none"
           role="img"
           aria-label={`Area chart of call volume: ${total} sessions over ${data.length} day${data.length === 1 ? "" : "s"}`}
         >
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -16 }}>
+            <AreaChart
+              accessibilityLayer={false}
+              data={data}
+              margin={{ top: 8, right: 12, bottom: 0, left: -16 }}
+            >
               <defs>
                 <linearGradient id="volumeFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={GREEN} stopOpacity={0.35} />
@@ -218,12 +222,12 @@ function OutcomeMixCard({
         <>
           <div className="relative">
             <div
-              className="rechart-frame"
+              className="rechart-frame [&_svg]:outline-none"
               role="img"
               aria-label={`Donut chart of outcomes: ${data.map((item) => `${item.label} ${item.value}`).join(", ")}`}
             >
               <ResponsiveContainer width="100%" height={210}>
-                <PieChart>
+                <PieChart accessibilityLayer={false}>
                   <Pie
                     data={data}
                     dataKey="value"
@@ -315,7 +319,7 @@ function LatencyByStageCard({ latency }: { latency: Analytics["latency"] }) {
             </span>
           </div>
           <div
-            className="rechart-frame"
+            className="rechart-frame [&_svg]:outline-none"
             role="img"
             aria-label={`Bar chart of latency by stage: ${data
               .map((row) => `${row.label} p50 ${formatLatency(row.p50)}, p90 ${formatLatency(row.p90)}`)
@@ -323,6 +327,7 @@ function LatencyByStageCard({ latency }: { latency: Analytics["latency"] }) {
           >
             <ResponsiveContainer width="100%" height={210}>
               <BarChart
+                accessibilityLayer={false}
                 data={data}
                 margin={{ top: 8, right: 12, bottom: 0, left: -8 }}
               >
@@ -406,7 +411,7 @@ function VoiceIssuesCard({
       {data.length ? (
         <>
           <div
-            className="rechart-frame"
+            className="rechart-frame [&_svg]:outline-none"
             role="img"
             aria-label={`Bar chart of voice issue impact: ${data
               .map((item) => `${item.label} ${item.impact_percentage_points} percentage points`)
@@ -414,6 +419,7 @@ function VoiceIssuesCard({
           >
             <ResponsiveContainer width="100%" height={210}>
               <BarChart
+                accessibilityLayer={false}
                 data={data}
                 layout="vertical"
                 margin={{ top: 4, right: 24, bottom: 0, left: 8 }}

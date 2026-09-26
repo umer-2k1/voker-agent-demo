@@ -386,6 +386,7 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
                 </Button>
                 <TracePanel
                   trace={trace}
+                  loading={traceQuery.isPending}
                   apiBaseUrl={apiBaseUrl}
                   projectSlug={projectSlug}
                   reanalyzing={reanalysisMutation.isPending}

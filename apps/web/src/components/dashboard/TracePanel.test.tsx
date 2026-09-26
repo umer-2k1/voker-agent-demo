@@ -19,6 +19,32 @@ import { TracePanel } from "./TracePanel";
 
 afterEach(() => vi.clearAllMocks());
 
+const baseProps = {
+  apiBaseUrl: "http://api.test",
+  projectSlug: "voice",
+  reanalyzing: false,
+  reanalysisError: null,
+  onReanalyze: () => undefined,
+};
+
+test("shows a loader while a selected session is still loading", () => {
+  render(<TracePanel trace={null} loading {...baseProps} />);
+
+  expect(
+    screen.getByRole("heading", { name: /loading session/i }),
+  ).toBeVisible();
+  expect(screen.getByRole("status", { name: /loading/i })).toBeInTheDocument();
+  expect(screen.queryByText(/select a session/i)).not.toBeInTheDocument();
+});
+
+test("prompts to pick a session only when nothing is loading", () => {
+  render(<TracePanel trace={null} {...baseProps} />);
+
+  expect(
+    screen.getByRole("heading", { name: /select a session/i }),
+  ).toBeVisible();
+});
+
 test("seeks the waveform and marks the matching transcript turn", () => {
   render(
     <TracePanel

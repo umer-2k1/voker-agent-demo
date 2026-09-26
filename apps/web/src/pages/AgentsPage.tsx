@@ -5,6 +5,8 @@ import { Link, useParams } from "react-router-dom";
 import type { Analytics } from "@/components/dashboard/types";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { LoadingState } from "@/components/ui/loading";
+import { H1 } from "@/components/ui/typography";
 import { loadProjects, resolveProjectSlug } from "@/lib/projects";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
@@ -48,7 +50,7 @@ export function AgentsPage() {
               <ArrowLeft size={15} /> All agents
             </Link>
           ) : null}
-          <h1>{selectedName ?? "Agent performance"}</h1>
+          <H1 as="h1">{selectedName ?? "Agent performance"}</H1>
           <p className="page-intro">
             Compare production behavior using observed calls and explicit
             outcome coverage.
@@ -62,7 +64,7 @@ export function AgentsPage() {
         </div>
       ) : null}
       {query.isPending ? (
-        <p className="empty-state">Loading agent evidence…</p>
+        <LoadingState label="Loading agent evidence…" className="py-16" />
       ) : null}
       {selectedName ? (
         selected ? (

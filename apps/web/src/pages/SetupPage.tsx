@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { H1, Lead } from "@/components/ui/typography";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const defaultProjectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -399,13 +400,13 @@ export function SetupPage() {
     <main className="mx-auto w-full max-w-7xl px-6 py-10 md:px-10 md:py-14">
       <header className="mb-8 flex flex-col gap-5 border-b border-emerald-950/10 pb-7 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="max-w-3xl text-4xl font-semibold tracking-[-.04em] text-[#173c36]">
+          <H1 className="max-w-3xl">
             Connect a voice pipeline and verify what Voker observes.
-          </h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-[#506a65]">
+          </H1>
+          <Lead className="mt-3 max-w-2xl">
             Choose the integration boundary you own. Provider data that has not
             arrived is shown as unknown, never as a failure.
-          </p>
+          </Lead>
         </div>
         <div className="grid min-w-64 gap-2 sm:grid-cols-2">
           <NativeSelect

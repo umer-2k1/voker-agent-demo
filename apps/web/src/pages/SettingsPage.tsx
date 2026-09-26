@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Display, Eyebrow, H2, Lead } from "@/components/ui/typography";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const defaultProjectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
@@ -55,7 +56,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     });
   } catch (error) {
     if (controller.signal.aborted)
-      throw new Error("The API did not respond. Please try again.");
+      throw new Error("The API did not respond. Please try again.", {
+        cause: error,
+      });
     throw error;
   } finally {
     window.clearTimeout(timeout);
@@ -146,16 +149,12 @@ export function SettingsPage({ account }: { account: Account }) {
     <main className="mx-auto w-full max-w-5xl px-6 py-10 md:px-10 md:py-14">
       <header className="mb-8 border-b border-[#dce8e5] pb-7">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[.14em] text-[#267469]">
-            Workspace settings
-          </p>
-          <h1 className="mt-2 max-w-none text-4xl font-semibold tracking-[-.05em] text-[#173c36] md:text-5xl">
-            Manage your workspace
-          </h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-[#506a65]">
+          <Eyebrow>Workspace settings</Eyebrow>
+          <Display className="mt-2 max-w-none">Manage your workspace</Display>
+          <Lead className="mt-3 max-w-2xl">
             Account identity and project ingest access, kept together in one
             place.
-          </p>
+          </Lead>
         </div>
       </header>
       <div className="grid gap-5">
@@ -165,12 +164,8 @@ export function SettingsPage({ account }: { account: Account }) {
         >
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[.14em] text-[#267469]">
-                Profile
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-[-.03em] text-[#173c36]">
-                Signed-in account
-              </h2>
+              <Eyebrow>Profile</Eyebrow>
+              <H2 className="mt-2">Signed-in account</H2>
             </div>
             <span className="inline-flex items-center gap-2 rounded-full bg-[#eaf5f3] px-3 py-1.5 text-xs font-bold text-[#176258]">
               <i className="h-2 w-2 rounded-full bg-[#20a28b]" />
@@ -200,13 +195,9 @@ export function SettingsPage({ account }: { account: Account }) {
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[.14em] text-[#267469]">
-                Ingest access
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-[-.03em] text-[#173c36]">
-                Project API keys
-              </h2>
-              <p className="mt-2 max-w-lg text-sm leading-6 text-[#526b67]">
+              <Eyebrow>Ingest access</Eyebrow>
+              <H2 className="mt-2">Project API keys</H2>
+              <p className="mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
                 Create a scoped key for an agent. The complete secret is shown
                 once.
               </p>

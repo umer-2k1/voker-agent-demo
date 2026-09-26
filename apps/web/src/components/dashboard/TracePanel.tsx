@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Eyebrow, H2, H4 } from "@/components/ui/typography";
 import { cn } from "@/lib/utils";
 
 function formatLatency(value: number | null | undefined) {
@@ -342,10 +343,10 @@ export function TracePanel({
     return (
       <Card className="overflow-hidden" id="trace">
         <CardHeader>
-          <p className="eyebrow">Session trace</p>
-          <h2 className="text-lg font-semibold">
+          <Eyebrow>Session trace</Eyebrow>
+          <H2>
             {loading ? "Loading session…" : "Select a session"}
-          </h2>
+          </H2>
           <p className="text-sm text-muted-foreground">
             {loading
               ? "Fetching the trace, transcript, and evidence for this call."
@@ -526,13 +527,13 @@ function TracePanelContent({
     <Card className="overflow-hidden" id="trace">
       <CardHeader className="flex flex-col gap-3 border-b border-border sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="eyebrow">Session trace</p>
-          <h2
-            className="truncate text-lg font-semibold tracking-tight"
+          <Eyebrow>Session trace</Eyebrow>
+          <H2
+            className="truncate"
             title={trace.session.external_session_id}
           >
             {trace.session.external_session_id}
-          </h2>
+          </H2>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant={statusMeta(trace.session.status).variant}>
               {statusMeta(trace.session.status).label}
@@ -1081,9 +1082,7 @@ function TracePanelContent({
           <section>
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-base font-semibold text-foreground">
-                  Execution waterfall
-                </h3>
+                <H4>Execution waterfall</H4>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Nested spans share one relative timeline; overlaps remain
                   visible.
@@ -1121,9 +1120,7 @@ function TracePanelContent({
           ) : null}
           <section>
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-base font-semibold text-foreground">
-                Normalized events
-              </h3>
+              <H4>Normalized events</H4>
               <span className="text-xs text-muted-foreground">
                 {trace.event_page.total} total
               </span>

@@ -5,6 +5,8 @@ import { Link, useParams } from "react-router-dom";
 import type { Analytics } from "@/components/dashboard/types";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { LoadingState } from "@/components/ui/loading";
+import { H1 } from "@/components/ui/typography";
 import { loadProjects, resolveProjectSlug } from "@/lib/projects";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
@@ -49,7 +51,7 @@ export function IntentsPage() {
               <ArrowLeft size={15} /> All intents
             </Link>
           ) : null}
-          <h1>{selectedName ?? "Intent performance"}</h1>
+          <H1 as="h1">{selectedName ?? "Intent performance"}</H1>
           <p className="page-intro">
             Compare observed outcomes, then open the exact calls behind each
             result.
@@ -63,7 +65,7 @@ export function IntentsPage() {
         </div>
       ) : null}
       {query.isPending ? (
-        <p className="empty-state">Loading intent evidence…</p>
+        <LoadingState label="Loading intent evidence…" className="py-16" />
       ) : null}
       {selectedName ? (
         selected ? (

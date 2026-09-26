@@ -27,6 +27,8 @@ import type {
 } from "@/components/dashboard/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LoadingState, PageLoader } from "@/components/ui/loading";
+import { Eyebrow, H1 } from "@/components/ui/typography";
 import type { Account } from "@/pages/AccountPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { SettingsPage } from "@/pages/SettingsPage";
@@ -296,7 +298,7 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
     }
     void stream();
     return () => controller.abort();
-  }, [liveSessionId, liveSessionStatus, refetchTrace]);
+  }, [liveSessionId, liveSessionStatus, projectSlug, refetchTrace]);
 
   const signInRequired =
     dashboardError instanceof Error &&
@@ -305,13 +307,13 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
     <>
       <section className="content" id={sessionsOnly ? "sessions" : "overview"}>
         <header className="page-header">
-          <div>
-            <p className="eyebrow">Voice-agent observability</p>
-            <h1>
+          <div className="space-y-2">
+            <Eyebrow>Voice-agent observability</Eyebrow>
+            <H1>
               {sessionsOnly
                 ? "Investigate sessions with evidence."
                 : "Workspace health at a glance."}
-            </h1>
+            </H1>
           </div>
           <Badge className="live-indicator">
             <i /> Live data
@@ -334,6 +336,9 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
             No project is available for this account yet. Please contact a
             workspace administrator.
           </div>
+        ) : null}
+        {!sessionsOnly && projectsQuery.isPending ? (
+          <LoadingState label="Loading your workspace…" className="py-24" />
         ) : null}
         {!sessionsOnly && projectSlug ? (
           <OverviewPanel
@@ -368,6 +373,9 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
               });
             }}
           />
+        ) : null}
+        {sessionsOnly && projectsQuery.isPending ? (
+          <LoadingState label="Loading sessions…" className="py-24" />
         ) : null}
         {sessionsOnly && projectSlug ? (
           <section className="sessions-workspace">
@@ -549,12 +557,7 @@ function RequireDashboardUser() {
     retry: false,
   });
   if (account.isPending)
-    return (
-      <main className="auth-loading" aria-label="Checking your sign-in">
-        <span className="brand-mark">V</span>
-        <p>Checking your secure session…</p>
-      </main>
-    );
+    return <PageLoader label="Checking your secure session…" />;
   if (account.data === null)
     return <Navigate replace to="/login" state={{ from: location.pathname }} />;
   if (account.isError)
@@ -576,5 +579,9 @@ function SettingsRoute() {
     queryFn: accountRequest,
     retry: false,
   });
+  if (account.isPending)
+    return (
+      <LoadingState label="Loading workspace settings…" className="py-24" />
+    );
   return account.data ? <SettingsPage account={account.data} /> : null;
 }

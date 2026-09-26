@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 
+import { Eyebrow, H1 } from "@/components/ui/typography";
+
 export type Account = {
   id: string;
   email: string;
@@ -9,8 +11,8 @@ export type Account = {
 export function AccountPage({ account }: { account: Account }) {
   return (
     <main className="settings-page">
-      <p className="eyebrow">Account settings</p>
-      <h1>Your account</h1>
+      <Eyebrow>Account settings</Eyebrow>
+      <H1>Your account</H1>
       <section className="account-card">
         <b>{account.display_name ?? "Google account"}</b>
         <span>{account.email}</span>

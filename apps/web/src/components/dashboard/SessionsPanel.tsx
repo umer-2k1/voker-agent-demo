@@ -36,6 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Eyebrow, H3 } from "@/components/ui/typography";
 import { cn } from "@/lib/utils";
 
 type SavedFilter = {
@@ -434,10 +435,8 @@ export function SessionsPanel({
     <Card className="overflow-hidden" id="sessions-queue">
       <CardHeader className="flex flex-col gap-4 border-b border-border sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
-          <p className="eyebrow">Investigation queue</p>
-          <h2 className="text-lg font-semibold tracking-tight">
-            Sessions needing attention
-          </h2>
+          <Eyebrow>Investigation queue</Eyebrow>
+          <H3>Sessions needing attention</H3>
           <p className="text-sm text-muted-foreground">
             {needsReview
               ? `${needsReview} of ${page.total} captured sessions need review.`

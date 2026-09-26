@@ -45,7 +45,7 @@ export function IntentsPage() {
     : null;
 
   return (
-    <main className="content insights-page">
+    <section className="content insights-page">
       <header className="page-header">
         <div>
           {selectedName ? (
@@ -130,7 +130,7 @@ export function IntentsPage() {
           </div>
         </Card>
       ) : null}
-    </main>
+    </section>
   );
 }
 

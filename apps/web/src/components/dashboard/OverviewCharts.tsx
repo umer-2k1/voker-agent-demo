@@ -1,8 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -22,7 +20,6 @@ import { Card } from "@/components/ui/card";
 // literals because Recharts writes SVG attributes rather than class names.
 const AXIS = "#506a65";
 const GRID = "#e5eeec";
-const TEAL = "#004d43";
 const GREEN = "#20a28b";
 const INDIGO = "#4f46e5";
 const AMBER = "#d97706";
@@ -124,6 +121,10 @@ function ChartEmpty({ children }: { children: string }) {
 function VolumeTrendCard({ rows }: { rows: Analytics["volume_trend"] }) {
   const data = useMemo(() => fillTrend(rows ?? []), [rows]);
   const total = data.reduce((sum, row) => sum + row.sessions, 0);
+  const busiest = data.reduce<{ date: string; sessions: number } | null>(
+    (best, row) => (row.sessions > (best?.sessions ?? -1) ? row : best),
+    null,
+  );
   return (
     <Card className="chart-card shadow-none">
       <h2>Call volume</h2>
@@ -131,54 +132,75 @@ function VolumeTrendCard({ rows }: { rows: Analytics["volume_trend"] }) {
         Sessions started per day for the selected environments and dates.
       </p>
       {data.length ? (
-        <div
-          className="rechart-frame [&_svg]:outline-none"
-          role="img"
-          aria-label={`Area chart of call volume: ${total} sessions over ${data.length} day${data.length === 1 ? "" : "s"}`}
-        >
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart
-              accessibilityLayer={false}
-              data={data}
-              margin={{ top: 8, right: 12, bottom: 0, left: -16 }}
-            >
-              <defs>
-                <linearGradient id="volumeFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={GREEN} stopOpacity={0.35} />
-                  <stop offset="100%" stopColor={GREEN} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke={GRID} vertical={false} />
-              <XAxis
-                dataKey="date"
-                tickFormatter={(value) => formatDay(String(value))}
-                tick={{ fontSize: 11, fill: AXIS }}
-                tickLine={false}
-                axisLine={{ stroke: GRID }}
-                minTickGap={24}
-              />
-              <YAxis
-                allowDecimals={false}
-                tick={{ fontSize: 11, fill: AXIS }}
-                tickLine={false}
-                axisLine={false}
-                width={36}
-              />
-              <Tooltip
-                labelFormatter={(value) => formatDay(String(value))}
-                formatter={(value) => [`${value} sessions`, "Volume"]}
-              />
-              <Area
-                type="monotone"
-                dataKey="sessions"
-                stroke={TEAL}
-                strokeWidth={2}
-                fill="url(#volumeFill)"
-                isAnimationActive={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        <>
+          <div
+            className="rechart-frame [&_svg]:outline-none"
+            role="img"
+            aria-label={`Bar chart of call volume: ${total} sessions over ${data.length} day${data.length === 1 ? "" : "s"}`}
+          >
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart
+                accessibilityLayer={false}
+                data={data}
+                margin={{ top: 12, right: 8, bottom: 0, left: -16 }}
+              >
+                <CartesianGrid stroke={GRID} vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={(value) => formatDay(String(value))}
+                  tick={{ fontSize: 11, fill: AXIS }}
+                  tickLine={false}
+                  axisLine={{ stroke: GRID }}
+                  minTickGap={16}
+                  padding={{ left: 12, right: 12 }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 11, fill: AXIS }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={36}
+                />
+                <Tooltip
+                  cursor={{ fill: "rgba(32,162,139,0.08)" }}
+                  labelFormatter={(value) => formatDay(String(value))}
+                  formatter={(value) => [`${value} sessions`, "Volume"]}
+                />
+                <Bar
+                  dataKey="sessions"
+                  fill={GREEN}
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={48}
+                  isAnimationActive={false}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="chart-footnote">
+            {total.toLocaleString()} sessions ·{" "}
+            {busiest
+              ? `busiest ${formatDay(busiest.date)} (${busiest.sessions})`
+              : "no activity"}{" "}
+            · {(total / data.length).toFixed(1)}/day average
+          </p>
+          <table className="sr-only">
+            <caption>Call volume by day</caption>
+            <thead>
+              <tr>
+                <th scope="col">Day</th>
+                <th scope="col">Sessions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((row) => (
+                <tr key={row.date}>
+                  <td>{formatDay(row.date)}</td>
+                  <td>{row.sessions}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       ) : (
         <ChartEmpty>Call volume appears once sessions arrive.</ChartEmpty>
       )}
@@ -277,6 +299,23 @@ function OutcomeMixCard({
             {unmeasured ? ` · ${unmeasured} not yet measured` : ""}.{" "}
             <Link to="/sessions">Review sessions</Link>
           </p>
+          <table className="sr-only">
+            <caption>Outcome mix</caption>
+            <thead>
+              <tr>
+                <th scope="col">Outcome</th>
+                <th scope="col">Sessions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((item) => (
+                <tr key={item.label}>
+                  <td>{item.label}</td>
+                  <td>{item.value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </>
       ) : (
         <ChartEmpty>
@@ -373,6 +412,27 @@ function LatencyByStageCard({ latency }: { latency: Analytics["latency"] }) {
               ? "A 0 ms stage means the provider reported no duration for that span."
               : null}
           </p>
+          <table className="sr-only">
+            <caption>Latency by stage</caption>
+            <thead>
+              <tr>
+                <th scope="col">Stage</th>
+                <th scope="col">p50</th>
+                <th scope="col">p90</th>
+                <th scope="col">Samples</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((row) => (
+                <tr key={row.stage}>
+                  <td>{row.label}</td>
+                  <td>{formatLatency(row.p50)}</td>
+                  <td>{formatLatency(row.p90)}</td>
+                  <td>{row.samples}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </>
       ) : (
         <ChartEmpty>
@@ -462,6 +522,23 @@ function VoiceIssuesCard({
               ) : null,
             )}
           </div>
+          <table className="sr-only">
+            <caption>Voice issues by impact</caption>
+            <thead>
+              <tr>
+                <th scope="col">Issue</th>
+                <th scope="col">Impact (percentage points)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((item) => (
+                <tr key={item.key}>
+                  <td>{item.label}</td>
+                  <td>{item.impact_percentage_points}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </>
       ) : (
         <ChartEmpty>

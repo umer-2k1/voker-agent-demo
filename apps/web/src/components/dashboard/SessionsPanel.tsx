@@ -38,7 +38,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Eyebrow, H3 } from "@/components/ui/typography";
+import { Eyebrow, H2 } from "@/components/ui/typography";
 import { cn } from "@/lib/utils";
 
 type SavedFilter = {
@@ -485,7 +485,7 @@ export function SessionsPanel({
       <CardHeader className="flex flex-col gap-4 border-b border-border sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
           <Eyebrow>Investigation queue</Eyebrow>
-          <H3>Sessions needing attention</H3>
+          <H2>Sessions needing attention</H2>
           <p className="text-sm text-muted-foreground">
             {needsReview
               ? `${needsReview} of ${page.total} captured sessions need review.`
@@ -642,6 +642,7 @@ export function SessionsPanel({
                     type="button"
                     className="max-w-52 truncate px-2.5 py-1 font-medium hover:bg-accent"
                     onClick={() => applySavedFilter(filter)}
+                    title={filter.name}
                   >
                     {filter.name}
                   </button>
@@ -758,10 +759,16 @@ export function SessionsPanel({
                             aria-hidden="true"
                           />
                           <span className="flex min-w-0 flex-col">
-                            <span className="truncate font-medium text-foreground group-hover:underline">
+                            <span
+                              className="truncate font-medium text-foreground group-hover:underline"
+                              title={session.external_session_id}
+                            >
                               {session.external_session_id}
                             </span>
-                            <span className="truncate text-xs text-muted-foreground">
+                            <span
+                              className="truncate text-xs text-muted-foreground"
+                              title={`${session.source} · ${session.environment ?? "default"} · ${formatStarted(session.started_at)}`}
+                            >
                               {session.source} · {session.environment ?? "default"} ·{" "}
                               {formatStarted(session.started_at)}
                             </span>
@@ -776,7 +783,10 @@ export function SessionsPanel({
                     <TableCell>
                       {session.intent ? (
                         <div className="space-y-1">
-                          <p className="max-w-44 truncate font-medium text-foreground">
+                          <p
+                            className="max-w-44 truncate font-medium text-foreground"
+                            title={session.intent.replaceAll("_", " ")}
+                          >
                             {session.intent.replaceAll("_", " ")}
                           </p>
                           <p className="text-xs text-muted-foreground">

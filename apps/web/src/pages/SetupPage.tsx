@@ -425,7 +425,7 @@ export function SetupPage() {
   const loadingSetup = projects.isPending || (setup.isPending && !setup.data);
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-6 py-8 md:px-10 md:py-10">
+    <div className="mx-auto w-full max-w-7xl px-6 py-8 md:px-10 md:py-10">
       <header className="mb-6 flex flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
           <Eyebrow>Setup</Eyebrow>
@@ -592,6 +592,6 @@ export function SetupPage() {
           </TabsContent>
         ))}
       </Tabs>
-    </main>
+    </div>
   );
 }

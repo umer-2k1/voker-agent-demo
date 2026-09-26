@@ -44,7 +44,7 @@ export function AgentsPage() {
     ? agents.find((item) => item.label === selectedName)
     : null;
   return (
-    <main className="content insights-page">
+    <section className="content insights-page">
       <header className="page-header">
         <div>
           {selectedName ? (
@@ -115,7 +115,7 @@ export function AgentsPage() {
           </div>
         </Card>
       ) : null}
-    </main>
+    </section>
   );
 }
 

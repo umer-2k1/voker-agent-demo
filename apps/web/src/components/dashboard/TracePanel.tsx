@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Eyebrow, H2, H4 } from "@/components/ui/typography";
+import { Eyebrow, H2, H3 } from "@/components/ui/typography";
 import { cn } from "@/lib/utils";
 
 function formatLatency(value: number | null | undefined) {
@@ -272,10 +272,16 @@ function TraceWaterfall({ trace }: { trace: Trace }) {
                 className="min-w-0"
                 style={{ paddingInlineStart: `${depthFor(span) * 14}px` }}
               >
-                <b className="block truncate text-sm font-medium text-foreground">
+                <b
+                  className="block truncate text-sm font-medium text-foreground"
+                  title={span.name}
+                >
                   {span.name}
                 </b>
-                <small className="block truncate text-xs text-muted-foreground">
+                <small
+                  className="block truncate text-xs text-muted-foreground"
+                  title={`${span.kind}${identity ? ` · ${identity}` : ""}`}
+                >
                   {span.kind}
                   {identity ? ` · ${identity}` : ""}
                 </small>
@@ -1084,7 +1090,7 @@ function TracePanelContent({
           <section>
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <H4>Execution waterfall</H4>
+                <H3>Execution waterfall</H3>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Nested spans share one relative timeline; overlaps remain
                   visible.
@@ -1122,7 +1128,7 @@ function TracePanelContent({
           ) : null}
           <section>
             <div className="mb-3 flex items-center justify-between gap-3">
-              <H4>Normalized events</H4>
+              <H3>Normalized events</H3>
               <span className="text-xs text-muted-foreground">
                 {trace.event_page.total} total
               </span>

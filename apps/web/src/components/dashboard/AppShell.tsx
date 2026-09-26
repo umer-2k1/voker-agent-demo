@@ -90,7 +90,11 @@ function DashboardSidebar({
   const { setOpenMobile } = useSidebar();
 
   return (
-    <Sidebar collapsible="icon" aria-label="Primary navigation">
+    <Sidebar
+      aria-label="Primary navigation"
+      collapsible="icon"
+      role="navigation"
+    >
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -116,7 +120,7 @@ function DashboardSidebar({
         <SidebarGroup>
           <SidebarGroupLabel>Voice operations</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-2">
               {navigation.map(({ label, to, icon: Icon, end }) => {
                 const isActive = end
                   ? location.pathname === to
@@ -160,10 +164,16 @@ function DashboardSidebar({
                     {initials(account)}
                   </span>
                   <span className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">
+                    <span
+                      className="truncate font-medium"
+                      title={account.display_name ?? "Google account"}
+                    >
                       {account.display_name ?? "Google account"}
                     </span>
-                    <span className="truncate text-xs text-sidebar-foreground/70">
+                    <span
+                      className="truncate text-xs text-sidebar-foreground/70"
+                      title={account.email}
+                    >
                       {account.email}
                     </span>
                   </span>
@@ -172,10 +182,16 @@ function DashboardSidebar({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-60" side="right">
                 <DropdownMenuLabel>
-                  <span className="block truncate text-sm font-medium">
+                  <span
+                    className="block truncate text-sm font-medium"
+                    title={account.display_name ?? "Google account"}
+                  >
                     {account.display_name ?? "Google account"}
                   </span>
-                  <span className="block truncate text-xs font-normal text-muted-foreground">
+                  <span
+                    className="block truncate text-xs font-normal text-muted-foreground"
+                    title={account.email}
+                  >
                     {account.email}
                   </span>
                 </DropdownMenuLabel>
@@ -239,7 +255,10 @@ export function AppShell({ account }: { account: Account }) {
             Voice operations
           </span>
           <span className="hidden text-muted-foreground sm:inline">/</span>
-          <span className="truncate text-sm font-medium">
+          <span
+            className="truncate text-sm font-medium"
+            title={routeLabel(location.pathname)}
+          >
             {routeLabel(location.pathname)}
           </span>
         </header>

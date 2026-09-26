@@ -148,7 +148,7 @@ export function SettingsPage({ account }: { account: Account }) {
   });
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-10 md:px-10 md:py-14">
+    <div className="mx-auto w-full max-w-5xl px-6 py-10 md:px-10 md:py-14">
       <header className="mb-6 border-b border-[#dce8e5] pb-5">
         <div>
           <Eyebrow>Workspace settings</Eyebrow>
@@ -179,10 +179,16 @@ export function SettingsPage({ account }: { account: Account }) {
               {initials(account)}
             </span>
             <div className="min-w-0">
-              <h3 className="truncate text-base font-bold text-[#254841]">
+              <h3
+                className="truncate text-base font-bold text-[#254841]"
+                title={account.display_name ?? "Google account"}
+              >
                 {account.display_name ?? "Google account"}
               </h3>
-              <p className="mt-1 truncate text-sm text-[#506a65]">
+              <p
+                className="mt-1 truncate text-sm text-[#506a65]"
+                title={account.email}
+              >
                 {account.email}
               </p>
               <small className="mt-2 block text-xs font-bold text-[#267469]">
@@ -445,7 +451,10 @@ export function SettingsPage({ account }: { account: Account }) {
                     <KeyRound size={15} strokeWidth={2} />
                   </span>
                   <span className="min-w-0">
-                    <b className="block truncate text-sm text-[#254841]">
+                    <b
+                      className="block truncate text-sm text-[#254841]"
+                      title={key.label}
+                    >
                       {key.label}
                     </b>
                     <small className="mt-1 block text-xs text-[#829a95]">
@@ -483,6 +492,6 @@ export function SettingsPage({ account }: { account: Account }) {
           </div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }

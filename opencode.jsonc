@@ -1,0 +1,24 @@
+{
+  // OpenCode project configuration.
+  // Docs: https://opencode.ai/v2/docs/config  |  MCP: https://opencode.ai/v2/docs/mcp-servers
+  "$schema": "https://opencode.ai/config.json",
+
+  "mcp": {
+    "servers": {
+      // Microsoft Playwright MCP — browser automation over stdio.
+      // Tools appear as `playwright_*` in the model's tool list.
+      "playwright": {
+        "type": "local",
+        "command": ["npx", "-y", "@playwright/mcp@latest"]
+        // If OpenCode cannot find `npx` (nvm PATH not inherited), replace the
+        // command above with an absolute path, e.g.:
+        // ["/Users/h.benterprise/.nvm/versions/node/v22.23.1/bin/npx", "-y", "@playwright/mcp@latest"]
+      }
+      // Add more servers here, e.g. port the shadcn server from .mcp.json:
+      // "shadcn": {
+      //   "type": "local",
+      //   "command": ["npx", "-y", "shadcn@latest", "mcp"]
+      // }
+    }
+  }
+}

@@ -1,14 +1,16 @@
 import json
+import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
 from voker_voice_api.analysis_versions import ANALYSIS_SCHEMA_VERSION, prompt_version_for_job
 from voker_voice_api.config import get_settings
+from voker_voice_api.intents import normalize_intent
 from voker_voice_api.costs import estimate_llm_cost_micros
 from voker_voice_api.models import (
     Agent,
@@ -194,14 +196,43 @@ def enqueue_completion_analysis(db: Session, project_id: uuid.UUID, session_id: 
             )
 
 
-def session_for_event(db: Session, context: IngestContext, event: CanonicalEvent) -> VoiceSession:
-    session = db.scalar(
-        select(VoiceSession).where(
-            VoiceSession.project_id == context.project_id,
-            VoiceSession.environment_id == context.environment_id,
-            VoiceSession.external_session_id == event.external_session_id,
+def session_for_event(
+    db: Session,
+    context: IngestContext,
+    event: CanonicalEvent,
+    session_cache: dict[str, VoiceSession] | None = None,
+) -> VoiceSession:
+    # Exporter batches may arrive at different API processes (for example
+    # while uvicorn reloads locally). Only the first session materialization
+    # needs coordination. Locking every later event creates head-of-line
+    # blocking, including for the crucial terminal event.
+    cache_key = f"{context.project_id}:{context.environment_id}:{event.external_session_id}"
+    session = session_cache.get(cache_key) if session_cache is not None else None
+    if session is None:
+        session = db.scalar(
+            select(VoiceSession).where(
+                VoiceSession.project_id == context.project_id,
+                VoiceSession.environment_id == context.environment_id,
+                VoiceSession.external_session_id == event.external_session_id,
+            )
         )
-    )
+    if session is None and db.bind is not None and db.bind.dialect.name == "postgresql":
+        lock_material = f"{context.project_id}:{context.environment_id}:{event.external_session_id}"
+        lock_key = int.from_bytes(
+            hashlib.blake2b(lock_material.encode(), digest_size=8).digest(),
+            byteorder="big",
+            signed=True,
+        )
+        db.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": lock_key})
+        # A competing request may have created the session while this request
+        # waited for the advisory lock, so always re-read before inserting.
+        session = db.scalar(
+            select(VoiceSession).where(
+                VoiceSession.project_id == context.project_id,
+                VoiceSession.environment_id == context.environment_id,
+                VoiceSession.external_session_id == event.external_session_id,
+            )
+        )
     if session is None:
         agent = resolve_agent(db, context.project_id, event)
         version = resolve_agent_version(db, agent, event)
@@ -220,16 +251,42 @@ def session_for_event(db: Session, context: IngestContext, event: CanonicalEvent
         db.add(session)
         db.flush()
     else:
+        if event.event_type == "session.started":
+            session = merge_session_metadata(db, session, event.attributes)
         if is_earlier(event.occurred_at, session.started_at):
             session.started_at = event.occurred_at
-        if event.event_type == "session.started":
-            session.metadata_ = {**session.metadata_, **event.attributes}
         agent = resolve_agent(db, context.project_id, event)
         version = resolve_agent_version(db, agent, event)
         if agent is not None and session.agent_id is None:
             session.agent_id = agent.id
         if version is not None and session.agent_version_id is None:
             session.agent_version_id = version.id
+    if session_cache is not None:
+        session_cache[cache_key] = session
+    return session
+
+
+def merge_session_metadata(
+    db: Session, session: VoiceSession, updates: dict[str, Any]
+) -> VoiceSession:
+    """Merge lifecycle projections without allowing out-of-order batches to erase them.
+
+    LiveKit's exporter intentionally sends asynchronously. A delayed
+    ``session.started`` request can therefore arrive after ``intent.detected``.
+    Locking only these infrequent projection writes preserves the low-latency
+    event path while making the JSON metadata merge deterministic.
+    """
+
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        locked_session = db.scalar(
+            select(VoiceSession)
+            .where(VoiceSession.id == session.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if locked_session is not None:
+            session = locked_session
+    session.metadata_ = {**(session.metadata_ or {}), **updates}
     return session
 
 
@@ -427,7 +484,12 @@ def upsert_span(
     return span
 
 
-def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) -> str:
+def persist_event(
+    db: Session,
+    context: IngestContext,
+    event: CanonicalEvent,
+    session_cache: dict[str, VoiceSession] | None = None,
+) -> str:
     duplicate = db.scalar(
         select(Event.id).where(
             Event.project_id == context.project_id, Event.event_id == event.event_id
@@ -447,7 +509,7 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
             )
         return "duplicate"
 
-    session = session_for_event(db, context, event)
+    session = session_for_event(db, context, event, session_cache)
     turn = upsert_turn(db, session, event)
     run = upsert_agent_run(db, session, turn, event)
     span = upsert_span(db, session, turn, run, event)
@@ -613,15 +675,18 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
     elif event.event_type == "intent.detected":
         intent = event.attributes.get("intent")
         if isinstance(intent, str) and intent.strip():
-            metadata = dict(session.metadata_)
-            metadata["intent"] = intent.strip()
+            normalized_intent = normalize_intent(intent)
+            metadata: dict[str, Any] = {
+                "intent": normalized_intent.value,
+                "intent_raw": normalized_intent.raw,
+            }
             confidence = event.attributes.get("confidence")
             if isinstance(confidence, (int, float)):
                 metadata["intent_confidence"] = round(float(confidence), 3)
             source = event.attributes.get("source")
             if isinstance(source, str):
                 metadata["intent_source"] = source
-            session.metadata_ = metadata
+            session = merge_session_metadata(db, session, metadata)
     return "accepted"
 
 
@@ -629,13 +694,17 @@ def ingest_batch(
     db: Session, context: IngestContext, raw_events: list[dict[str, Any]]
 ) -> EventBatchResponse:
     results: list[BatchItemResult] = []
+    # Most LiveKit exporter batches belong to one call. Reusing the already
+    # loaded Session avoids a select plus advisory-lock round trip for every
+    # individual span/event over a high-latency Postgres connection.
+    session_cache: dict[str, VoiceSession] = {}
     accepted = duplicate = rejected = 0
     for raw_event in raw_events:
         event_id = str(raw_event.get("event_id", "unknown"))
         try:
             event = CanonicalEvent.model_validate(raw_event)
             with db.begin_nested():
-                status = persist_event(db, context, event)
+                status = persist_event(db, context, event, session_cache)
             if status == "accepted":
                 accepted += 1
             else:

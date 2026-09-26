@@ -5,7 +5,6 @@ import hmac
 import json
 import uuid
 from collections.abc import AsyncIterator
-from threading import Lock
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -51,12 +50,6 @@ from voker_voice_api.schemas import (
 from voker_voice_api.security import decrypt_connector_secrets, hash_api_key
 
 router = APIRouter(prefix="/v1", tags=["ingestion"])
-
-# A local server receives exporter batches concurrently. First-seen events
-# materialize sessions, turns, spans and agent runs, so serialize those
-# check-then-create writes within this process to avoid unique-key races.
-_INGEST_WRITE_LOCK = Lock()
-
 
 async def decode_json_body(request: Request) -> dict[str, Any]:
     try:
@@ -107,13 +100,12 @@ async def create_event_batch(
     # synchronous SQLAlchemy work off the ASGI loop so a terminal event from a
     # short-lived LiveKit job is not queued behind an earlier telemetry batch.
     def persist_batch() -> EventBatchResponse:
-        with _INGEST_WRITE_LOCK:
-            context = authenticate_ingest_key(
-                raw_ingest_key(request, request.headers.get("x-voker-api-key")), db
-            )
-            response = ingest_batch(db, context, batch.events)
-            db.commit()
-            return response
+        context = authenticate_ingest_key(
+            raw_ingest_key(request, request.headers.get("x-voker-api-key")), db
+        )
+        response = ingest_batch(db, context, batch.events)
+        db.commit()
+        return response
 
     try:
         response = await asyncio.to_thread(persist_batch)

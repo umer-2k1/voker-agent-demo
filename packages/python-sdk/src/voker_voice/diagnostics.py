@@ -26,6 +26,14 @@ class SessionDiagnosticWriter:
     def __init__(self, directory: str | Path | None) -> None:
         self.directory = Path(directory) if directory else None
         self._lock = threading.Lock()
+        # Directory setup is a one-time best-effort operation. Calling mkdir
+        # for every event runs synchronously on LiveKit callbacks and showed
+        # up as audio-loop stalls in the real call logs.
+        if self.directory is not None:
+            try:
+                self.directory.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                self.directory = None
 
     @staticmethod
     def _safe_value(value: Any) -> Any:
@@ -57,7 +65,6 @@ class SessionDiagnosticWriter:
         if data:
             record["data"] = self._safe_value(data)
         try:
-            self.directory.mkdir(parents=True, exist_ok=True)
             with self._lock, (self.directory / f"{safe_id}.sdk.jsonl").open(
                 "a", encoding="utf-8"
             ) as handle:

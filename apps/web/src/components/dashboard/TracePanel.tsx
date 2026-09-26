@@ -353,7 +353,11 @@ function TracePanelContent({
   onEventPage?(offset: number): void;
 }) {
   const [showRaw, setShowRaw] = useState(false);
-  const [activeTab, setActiveTab] = useState("playback");
+  const [activeTab, setActiveTab] = useState(() =>
+    trace.recordings.some((item) => item.status === "available")
+      ? "playback"
+      : "transcript",
+  );
   const [activeRecordingId] = useState(
     () =>
       trace.recordings.find((item) => item.status === "available")?.id ?? null,
@@ -504,9 +508,15 @@ function TracePanelContent({
         </Button>
       </CardHeader>
 
-      <dl className="grid grid-cols-2 gap-px border-y border-slate-200 bg-slate-200 sm:grid-cols-3 lg:grid-cols-6">
+      <dl className="grid grid-cols-2 gap-px border-y border-slate-200 bg-slate-200 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         {[
           ["Status", trace.session.status],
+          [
+            "Intent",
+            trace.session.intent
+              ? `${trace.session.intent.replaceAll("_", " ")}${trace.session.intent_confidence != null ? ` · ${Math.round(trace.session.intent_confidence * 100)}%` : ""}`
+              : "Not observed",
+          ],
           [
             "Outcome",
             trace.session.outcome
@@ -559,6 +569,32 @@ function TracePanelContent({
           </span>
         </div>
         <code title="Session diagnostic log path">{collection.diagnostic_log}</code>
+      </section>
+
+      <section aria-label="Call state" className="grid gap-3 border-b border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-3">
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Intent evidence</p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {trace.session.intent ? trace.session.intent.replaceAll("_", " ") : "No routed intent captured"}
+          </p>
+          <p className="mt-1 text-xs text-slate-600">
+            {trace.session.intent_source ?? "The agent did not emit intent evidence."}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Resolution</p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {trace.session.outcome ? trace.session.outcome.replaceAll("_", " ") : "Outcome not observed"}
+          </p>
+          <p className="mt-1 text-xs text-slate-600">{trace.session.outcome_source ?? "No result event was received."}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Voice quality</p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {behavior.interruptions} interruptions · {behavior.dead_air} dead-air events
+          </p>
+          <p className="mt-1 text-xs text-slate-600">{behavior.talk_over} talk-over · {behavior.corrections} corrections</p>
+        </div>
       </section>
 
       <section
@@ -683,9 +719,7 @@ function TracePanelContent({
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="p-5">
         <TabsList variant="line" className="mb-5 gap-5 p-0">
-          <TabsTrigger value="playback" className="px-0">
-            Playback
-          </TabsTrigger>
+          {activeRecording ? <TabsTrigger value="playback" className="px-0">Playback</TabsTrigger> : null}
           <TabsTrigger value="transcript" className="px-0">
             Transcript
           </TabsTrigger>

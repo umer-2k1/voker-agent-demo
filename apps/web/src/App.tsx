@@ -31,7 +31,6 @@ import type { Account } from "@/pages/AccountPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { SetupPage } from "@/pages/SetupPage";
-import { IntentsPage } from "@/pages/IntentsPage";
 import { AgentsPage } from "@/pages/AgentsPage";
 import { loadProjects, resolveProjectSlug } from "@/lib/projects";
 
@@ -513,8 +512,8 @@ export function App() {
               path="/sessions/:sessionId"
               element={<DashboardPage sessionsOnly />}
             />
-            <Route path="/intents" element={<IntentsPage />} />
-            <Route path="/intents/:intent" element={<IntentsPage />} />
+            <Route path="/intents" element={<Navigate to="/sessions" replace />} />
+            <Route path="/intents/:intent" element={<Navigate to="/sessions" replace />} />
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/agents/:agent" element={<AgentsPage />} />
             <Route path="/settings" element={<SettingsRoute />} />

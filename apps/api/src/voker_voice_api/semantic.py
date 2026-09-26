@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from voker_voice_api.analysis_versions import ANALYSIS_SCHEMA_VERSION, SEMANTIC_PROMPT_VERSION
 from voker_voice_api.config import get_settings
+from voker_voice_api.intents import normalize_intent
 from voker_voice_api.models import (
     AnalysisRun,
     Event,
@@ -482,7 +483,13 @@ def evaluate_session(
             session.outcome = result.outcome
             session.outcome_source = "semantic"
         if result.intent and not session.metadata_.get("intent"):
-            session.metadata_ = {**session.metadata_, "intent": result.intent}
+            normalized_intent = normalize_intent(result.intent)
+            session.metadata_ = {
+                **session.metadata_,
+                "intent": normalized_intent.value,
+                "intent_raw": normalized_intent.raw,
+                "intent_source": "semantic",
+            }
         analysis_run.status = "completed"
         analysis_run.completed_at = datetime.now(UTC)
         analysis_run.result = {

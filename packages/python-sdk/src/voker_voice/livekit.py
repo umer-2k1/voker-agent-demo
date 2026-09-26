@@ -6,6 +6,7 @@ typing so importing :mod:`voker_voice` never imports LiveKit itself.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import inspect
 import json
@@ -172,6 +173,7 @@ class LiveKitObserver:
         self._tool_runs: dict[str, tuple[str, datetime, str, dict[str, Any]]] = {}
         self._completed_tools: set[str] = set()
         self._latest_session_usage: dict[str, Any] | None = None
+        self._terminal_event: dict[str, Any] | None = None
 
         if self.owns_session:
             self.session.emit(
@@ -903,20 +905,13 @@ class LiveKitObserver:
                     error=error_payload,
                     attributes={"close_reason": close_reason},
                 )
-            terminal_event = self._emit(
+            self._terminal_event = self._emit(
                 "session.ended",
                 occurred_at=occurred,
                 status=status,
                 error=error_payload,
                 attributes={"close_reason": close_reason},
             )
-            # The event is already in the asynchronous exporter queue.  Do not
-            # make an HTTP request from LiveKit's ``close`` callback: that runs
-            # on the audio/session loop and was blocking calls for up to 15 s
-            # when the database was busy. ``observe`` registers a documented
-            # JobContext shutdown callback to drain this queue after LiveKit has
-            # finalized the session.
-            del terminal_event
         off = _value(self.agent_session, "off")
         if callable(off):
             for name, callback in self._listeners:
@@ -977,7 +972,17 @@ def observe(
             # LiveKit runs shutdown callbacks after the voice pipeline is
             # finalized. Draining here preserves the terminal event without
             # blocking real-time audio or the AgentSession close handler.
-            await observer.session.client.aflush(timeout=8.0)
+            # Keep this bounded below LiveKit's child-process shutdown window.
+            # The close callback runs on LiveKit's audio/session loop, so it
+            # only records the terminal event. Deliver its idempotent copy in
+            # this post-session hook, off the event loop and with a deadline.
+            if observer._terminal_event is not None:
+                await asyncio.to_thread(
+                    observer.session.client.deliver_terminal_event,
+                    observer._terminal_event,
+                    timeout_seconds=4.0,
+                )
+            await observer.session.client.aflush(timeout=4.0)
             if observer.owns_client:
                 await observer.session.client.aclose()
 

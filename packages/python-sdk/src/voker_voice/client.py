@@ -71,11 +71,18 @@ class VokerVoice:
         self.max_event_bytes = max_event_bytes
         self.session_flush_timeout = session_flush_timeout
         self.diagnostics = diagnostics
-        self._session_diagnostics = SessionDiagnosticWriter(
+        # Per-event JSONL is useful during an investigation, but synchronously
+        # opening a file from an audio callback degrades a real voice call.
+        # Keep it opt-in: pass ``diagnostics=True``, an explicit
+        # ``session_log_dir``, or set ``VOKER_SESSION_LOG_DIR``.
+        diagnostic_directory = (
             session_log_dir
             if session_log_dir is not None
-            else os.getenv("VOKER_SESSION_LOG_DIR", "logs/sessions")
+            else os.getenv("VOKER_SESSION_LOG_DIR")
+            if diagnostics or os.getenv("VOKER_SESSION_LOG_DIR")
+            else None
         )
+        self._session_diagnostics = SessionDiagnosticWriter(diagnostic_directory)
         self._sink = event_sink
         if self._sink is None and self.enabled and self.api_key:
             self._sink = BackgroundExporter(

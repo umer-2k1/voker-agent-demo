@@ -23,6 +23,7 @@ from voker_voice_api.connectors import (
     list_provider_resources,
 )
 from voker_voice_api.database import get_db
+from voker_voice_api.intents import INTENT_LABELS
 from voker_voice_api.live import broker
 from voker_voice_api.models import (
     Agent,
@@ -443,6 +444,7 @@ def update_integration(
 
 
 def session_summary(session: VoiceSession, error_count: int, event_count: int) -> dict[str, Any]:
+    metadata = session.metadata_ if isinstance(session.metadata_, dict) else {}
     return {
         "id": str(session.id),
         "external_session_id": session.external_session_id,
@@ -451,6 +453,15 @@ def session_summary(session: VoiceSession, error_count: int, event_count: int) -
         "status": session.status,
         "outcome": session.outcome,
         "outcome_source": session.outcome_source,
+        "intent": metadata.get("intent") if isinstance(metadata.get("intent"), str) else None,
+        "intent_confidence": (
+            json_number(metadata.get("intent_confidence"))
+            if isinstance(metadata.get("intent_confidence"), (int, float))
+            else None
+        ),
+        "intent_source": (
+            metadata.get("intent_source") if isinstance(metadata.get("intent_source"), str) else None
+        ),
         "started_at": timestamp(session.started_at),
         "ended_at": timestamp(session.ended_at),
         "error_count": error_count,
@@ -741,6 +752,9 @@ def analytics_overview(
     correction_count, correction_links = distinct_count_and_links(
         Event, Event.event_type.startswith("correction.")
     )
+    handoff_count, handoff_links = distinct_count_and_links(
+        Event, Event.event_type == "agent.handoff"
+    )
     interruption_count, interruption_links = distinct_count_and_links(
         Event, Event.event_type == "voice.interruption"
     )
@@ -902,8 +916,8 @@ def analytics_overview(
     def intent_label(metadata: Any) -> str:
         value = metadata.get("intent") if isinstance(metadata, dict) else None
         if not isinstance(value, str) or not value.strip():
-            return "Unclassified"
-        return value.replace("_", " ").strip().title()
+            return INTENT_LABELS["unknown"]
+        return INTENT_LABELS.get(value, INTENT_LABELS["unknown"])
 
     intent_buckets: dict[str, dict[str, Any]] = {}
     volume_buckets: dict[str, int] = {}
@@ -1152,6 +1166,8 @@ def analytics_overview(
     def ratio(numerator: int, denominator: int) -> float | None:
         return numerator / denominator if denominator else None
 
+    stt_sample_size = int(latency.get("stt", {}).get("sample_size", 0))
+
     return {
         "filters": {
             "environment": environment,
@@ -1193,6 +1209,13 @@ def analytics_overview(
             "escalation": ratio(int(terminal.escalated or 0), session_count),
             "abandonment": ratio(abandoned_total, session_count),
             "error": ratio(error_count, session_count),
+            "handoff": ratio(handoff_count, session_count),
+        },
+        "metric_coverage": {
+            "outcomes": {"observed": known_outcome_count, "total": session_count},
+            "stt_latency": {"observed": stt_sample_size, "total": session_count},
+            "corrections": {"observed": correction_count, "total": session_count},
+            "escalations": {"observed": int(terminal.escalated or 0), "total": session_count},
         },
         "failure_categories": failure_categories,
         "failure_category_insights": failure_category_insights,
@@ -1202,6 +1225,7 @@ def analytics_overview(
             "talk_over_sessions": talk_over_count,
             "dead_air_sessions": dead_air_count,
             "correction_sessions": correction_count,
+            "handoff_sessions": handoff_count,
         },
         "insights": [
             {
@@ -1221,6 +1245,12 @@ def analytics_overview(
                 "label": "Sessions with observed corrections",
                 "count": correction_count,
                 "session_ids": correction_links,
+            },
+            {
+                "key": "handoffs",
+                "label": "Sessions with automated handoff",
+                "count": handoff_count,
+                "session_ids": handoff_links,
             },
             {
                 "key": "abandonment",

@@ -72,8 +72,12 @@ export type Analytics = {
     session_ids: string[];
   }>;
   rates: Record<
-    "resolution" | "correction" | "escalation" | "abandonment" | "error",
+    "resolution" | "correction" | "escalation" | "abandonment" | "error" | "handoff",
     number | null
+  >;
+  metric_coverage: Record<
+    "outcomes" | "stt_latency" | "corrections" | "escalations",
+    { observed: number; total: number }
   >;
   failure_categories: Record<string, number>;
   failure_category_insights: Array<{
@@ -87,6 +91,7 @@ export type Analytics = {
     talk_over_sessions: number;
     dead_air_sessions: number;
     correction_sessions: number;
+    handoff_sessions: number;
   };
   insights: Array<{
     key: string;
@@ -124,6 +129,9 @@ export type VoiceSession = {
   event_count: number;
   outcome?: string | null;
   outcome_source?: string | null;
+  intent?: string | null;
+  intent_confidence?: number | null;
+  intent_source?: string | null;
   duration_ms?: number | null;
   environment?: string | null;
   agent?: string | null;

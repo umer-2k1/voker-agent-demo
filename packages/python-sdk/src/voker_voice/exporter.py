@@ -45,11 +45,15 @@ class BackgroundExporter:
         endpoint: str,
         api_key: str,
         max_queue_size: int = 2_000,
-        batch_size: int = 50,
+        # Voice providers can emit a burst of spans when a turn ends. Keep
+        # batches deliberately small so one slow remote database transaction
+        # cannot make the whole burst (including session.ended) exceed the
+        # exporter HTTP deadline.
+        batch_size: int = 10,
         flush_interval_seconds: float = 0.25,
         timeout_seconds: float = 10.0,
         shutdown_timeout_seconds: float = 2.0,
-        max_retries: int = 0,
+        max_retries: int = 1,
         transport: httpx.BaseTransport | None = None,
         diagnostic_hook: Callable[[str, list[dict[str, Any]], dict[str, Any]], None] | None = None,
     ) -> None:

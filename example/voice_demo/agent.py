@@ -191,7 +191,7 @@ server = AgentServer(
 )
 
 
-@server.rtc_session(agent_name="voker-voice-demo")
+@server.rtc_session(agent_name=os.getenv("VOICE_DEMO_AGENT_NAME", "voker-voice-demo"))
 async def entrypoint(context: JobContext) -> None:
     # Validate before joining so a missing credential produces a clear worker error.
     for variable in (

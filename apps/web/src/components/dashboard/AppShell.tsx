@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CSSProperties } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  BarChart3,
   Bot,
   Headphones,
   LayoutDashboard,
@@ -33,7 +32,6 @@ const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const navigation = [
   { label: "Overview", to: "/", icon: LayoutDashboard, end: true },
   { label: "Sessions", to: "/sessions", icon: Headphones, end: false },
-  { label: "Intents", to: "/intents", icon: BarChart3, end: false },
   { label: "Setup", to: "/setup", icon: PlugZap, end: false },
   { label: "Agents", to: "/agents", icon: Bot, end: false },
   { label: "Workspace settings", to: "/settings", icon: Settings, end: false },

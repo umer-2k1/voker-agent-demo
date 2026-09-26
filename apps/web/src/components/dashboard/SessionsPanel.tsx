@@ -5,6 +5,15 @@ import type { SessionPage, VoiceSession } from "@/components/dashboard/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type SavedFilter = {
   name: string;
@@ -22,6 +31,19 @@ type SavedFilter = {
   sort: string;
 };
 const savedFiltersKey = "voker-session-filters";
+
+function outcomeLabel(session: VoiceSession) {
+  if (session.outcome === "resolved" || session.outcome === "success") return "Resolved";
+  if (session.outcome === "escalated") return "Escalated";
+  if (session.outcome === "abandoned") return "Abandoned";
+  return "Unknown";
+}
+
+function statusVariant(session: VoiceSession) {
+  if (session.error_count || session.status === "failed") return "destructive" as const;
+  if (session.outcome === "resolved" || session.outcome === "success") return "default" as const;
+  return "secondary" as const;
+}
 
 function readSavedFilters(): SavedFilter[] {
   try {
@@ -281,16 +303,11 @@ export function SessionsPanel({
           </Button>
         </div>
       </div>
-      <div className="status-legend" aria-label="Session status legend">
-        <span>
-          <i className="status-dot error" /> Needs review
-        </span>
-        <span>
-          <i className="status-dot in_progress" /> In progress
-        </span>
-        <span>
-          <i className="status-dot completed" /> Completed
-        </span>
+      <div className="flex flex-wrap items-center gap-2 px-5 pb-3 text-xs text-muted-foreground" aria-label="Session status legend">
+        <Badge variant="destructive">Needs review</Badge>
+        <Badge variant="secondary">In progress</Badge>
+        <Badge variant="outline">Complete</Badge>
+        <span>Intent and resolution are captured on the same session record.</span>
       </div>
       {!loading && !sessions.length ? (
         <div className="session-empty-state">
@@ -326,38 +343,63 @@ export function SessionsPanel({
           </p>
         </div>
       ) : null}
-      <div className="session-list">
-        {triagedSessions.map((session) => (
-          <Button
-            key={session.id}
-            className={`session-row !h-auto ${selectedId === session.id ? "selected" : ""}`}
-            onClick={() => onSelect(session.id)}
-          >
-            <span
-              className={`status-dot ${session.error_count ? "error" : session.status}`}
-            />
-            <span className="session-name">
-              {session.external_session_id}
-              <small>
-                {session.source} ·{" "}
-                {session.environment ? `${session.environment} · ` : ""}
-                {new Intl.DateTimeFormat(undefined, {
-                  hour: "numeric",
-                  minute: "2-digit",
-                }).format(new Date(session.started_at))}
-              </small>
-            </span>
-            <span className="session-events">
-              {session.event_count} events
-              <small>
-                {session.error_count
-                  ? `${session.error_count} errors`
-                  : (session.outcome ?? session.status)}
-              </small>
-            </span>
-          </Button>
-        ))}
-      </div>
+      {sessions.length ? (
+        <div className="px-3 pb-3">
+          <Table aria-label="Session investigation queue">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Session</TableHead>
+                <TableHead>Intent</TableHead>
+                <TableHead>Resolution</TableHead>
+                <TableHead className="text-right">Signals</TableHead>
+                <TableHead className="text-right">Events</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {triagedSessions.map((session) => (
+                <TableRow data-state={selectedId === session.id ? "selected" : undefined} key={session.id}>
+                  <TableCell className="min-w-64">
+                    <button
+                      className="group flex w-full flex-col items-start gap-1 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => onSelect(session.id)}
+                    >
+                      <span className="font-medium text-foreground group-hover:underline">
+                        {session.external_session_id}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {session.source} · {session.environment ?? "default"} · {new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(session.started_at))}
+                      </span>
+                    </button>
+                  </TableCell>
+                  <TableCell>
+                    {session.intent ? (
+                      <div className="space-y-1">
+                        <p className="max-w-44 truncate font-medium text-foreground">{session.intent.replaceAll("_", " ")}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {session.intent_confidence != null ? `${Math.round(session.intent_confidence * 100)}% confidence` : session.intent_source ?? "observed"}
+                        </p>
+                      </div>
+                    ) : <span className="text-muted-foreground">Not observed</span>}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={statusVariant(session)}>{outcomeLabel(session)}</Badge>
+                    <p className="mt-1 text-xs text-muted-foreground">{session.outcome_source ?? "No resolution evidence"}</p>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    <p className={session.error_count ? "font-semibold text-destructive" : "text-foreground"}>
+                      {session.error_count ? `${session.error_count} error${session.error_count === 1 ? "" : "s"}` : session.status.replaceAll("_", " ")}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {session.duration_ms == null ? "Live" : `${(session.duration_ms / 1000).toFixed(1)}s`}
+                    </p>
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">{session.event_count}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : null}
       {page.total > page.limit ? (
         <div className="pagination">
           <Button

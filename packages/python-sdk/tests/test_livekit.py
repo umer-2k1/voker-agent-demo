@@ -332,7 +332,10 @@ def test_assistant_conversation_item_uses_a_distinct_agent_transcript_turn() -> 
     assert assistant_message["attributes"]["transcript"] == "Your appointment is booked."
 
 
-def test_livekit_context_drains_telemetry_after_close_not_inside_close_handler() -> None:
+@pytest.mark.asyncio
+async def test_livekit_context_drains_telemetry_after_close_not_inside_close_handler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     sink = MemoryEventSink()
     client = VokerVoice(event_sink=sink, enabled=True)
     fake = FakeAgentSession()
@@ -342,12 +345,20 @@ def test_livekit_context_drains_telemetry_after_close_not_inside_close_handler()
         add_shutdown_callback=callbacks.append,
     )
     observer = observe_livekit(fake, context=context, client=client)
+    delivered: list[dict] = []
+    monkeypatch.setattr(
+        client,
+        "deliver_terminal_event",
+        lambda event, *, timeout_seconds: delivered.append(event) or True,
+    )
 
     fake.emit("close", {"created_at": 100.0, "reason": "participant_disconnected"})
 
     assert len(callbacks) == 1
     assert observer.owns_client is False
     assert event_types(sink)[-1] == "session.ended"
+    await callbacks[0]()
+    assert delivered == [sink.events[-1]]
 
 
 def test_false_interruption_is_not_reported_as_real_interruption() -> None:

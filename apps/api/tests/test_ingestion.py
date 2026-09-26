@@ -149,6 +149,68 @@ def test_ingest_authentication_does_not_lock_the_api_key_row_per_batch() -> None
     db.close()
 
 
+def test_intent_and_explicit_resolution_are_projected_onto_the_session() -> None:
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    organization = Organization(name="Intent projection")
+    db.add(organization)
+    db.flush()
+    project = Project(organization_id=organization.id, name="Voice", slug="intent-projection")
+    db.add(project)
+    db.flush()
+    environment = Environment(
+        project_id=project.id, name="Development", slug="development", kind="development"
+    )
+    db.add(environment)
+    db.flush()
+    context = IngestContext(
+        resolved_project_id=project.id, resolved_environment_id=environment.id
+    )
+    batch = ingest_batch(
+        db,
+        context,
+        [
+            raw_event(
+                event_id="evt-intent",
+                event_type="intent.detected",
+                external_session_id="intent-call",
+                attributes={
+                    "intent": "appointment_management",
+                    "confidence": 0.99,
+                    "source": "route_tool",
+                },
+            ),
+            raw_event(
+                event_id="evt-outcome",
+                event_type="outcome.recorded",
+                external_session_id="intent-call",
+                attributes={"outcome": "resolved", "source": "tool_result"},
+            ),
+            # Exporter requests can complete out of order: this older
+            # lifecycle event must enrich, not erase, the intent projection.
+            raw_event(
+                event_id="evt-started-late",
+                event_type="session.started",
+                external_session_id="intent-call",
+                attributes={"integration": "livekit"},
+            ),
+        ],
+    )
+    db.commit()
+
+    session = db.scalar(select(VoiceSession).where(VoiceSession.external_session_id == "intent-call"))
+    assert batch.accepted == 3
+    assert session is not None
+    assert session.metadata_["intent"] == "appointment_management"
+    assert session.metadata_["intent_confidence"] == 0.99
+    assert session.metadata_["intent_source"] == "route_tool"
+    assert session.metadata_["integration"] == "livekit"
+    assert session.outcome == "resolved"
+    assert session.outcome_source == "tool_result"
+    db.close()
+
+
 def test_authenticated_session_routes_preserve_outcome_and_queue_completion_once() -> None:
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool

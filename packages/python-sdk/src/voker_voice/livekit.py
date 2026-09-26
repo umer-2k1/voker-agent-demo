@@ -161,6 +161,7 @@ class LiveKitObserver:
         self._turn_id: str | None = None
         self._turn_has_assistant = False
         self._stt_span_id: str | None = None
+        self._stt_started_at: datetime | None = None
         self._agent_run_id = _external_id("run", f"root:{agent}:{session.session_id}")
         self._agent_state = "initializing"
         self._user_state = "listening"
@@ -264,6 +265,7 @@ class LiveKitObserver:
         self._turn_id = None
         self._turn_has_assistant = False
         self._stt_span_id = None
+        self._stt_started_at = None
 
     def _on_user_state(self, event: Any) -> None:
         data = _data(event)
@@ -274,6 +276,7 @@ class LiveKitObserver:
             if self._turn_id is not None and self._turn_has_assistant:
                 self._finish_turn(occurred)
             self._ensure_turn(occurred)
+            self._stt_started_at = occurred
             self._emit(
                 "speech.started",
                 occurred_at=occurred,
@@ -366,6 +369,7 @@ class LiveKitObserver:
         assert self._stt_span_id is not None
         if self._stt_span_id not in self._span_started:
             self._span_started.add(self._stt_span_id)
+            self._stt_started_at = self._stt_started_at or occurred
             self._emit(
                 "stt.started",
                 occurred_at=occurred,
@@ -391,6 +395,13 @@ class LiveKitObserver:
             output={"text": transcript} if is_final else None,
         )
         if is_final:
+            # Speech-to-text latency is the gap between the user starting to
+            # speak and the final transcript, not a provider-supplied constant.
+            duration_ms = None
+            if self._stt_started_at is not None:
+                duration_ms = max(
+                    0.0, (occurred - self._stt_started_at).total_seconds() * 1000
+                )
             self._emit(
                 "stt.completed",
                 occurred_at=occurred,
@@ -398,6 +409,7 @@ class LiveKitObserver:
                 span_id=self._stt_span_id,
                 attributes=attributes,
                 output={"text": transcript},
+                duration_ms=duration_ms,
             )
 
     def _on_transcription_timeout(self, event: Any) -> None:
@@ -628,6 +640,7 @@ class LiveKitObserver:
                 attributes=attributes,
             )
         cancelled = bool(data.get("cancelled", False))
+        measured_duration_ms = max(0.0, duration_seconds * 1000)
         self._emit(
             f"{stage}.cancelled" if cancelled else f"{stage}.completed",
             occurred_at=ended_at,
@@ -636,7 +649,9 @@ class LiveKitObserver:
             provider=provider,
             attributes=attributes,
             usage=self._metric_usage(data, provider, model),
-            duration_ms=max(0.0, duration_seconds * 1000),
+            # A provider metric of 0 means "not measured"; emitting it would
+            # overwrite a real speech-to-transcript duration on the same span.
+            duration_ms=measured_duration_ms if measured_duration_ms > 0 else None,
         )
 
     def _on_session_usage(self, event: Any) -> None:

@@ -516,6 +516,25 @@ def test_existing_voice_session_remains_backward_compatible() -> None:
     assert stt["output"] == {"text": "hello"}
 
 
+def test_stt_completion_reports_speech_to_transcript_duration() -> None:
+    sink = MemoryEventSink()
+    fake = FakeAgentSession()
+    client = VokerVoice(event_sink=sink, enabled=True)
+    observe_livekit(fake, agent="voice-router", client=client, session_id="call-stt")
+
+    fake.emit(
+        "user_state_changed",
+        {"old_state": "listening", "new_state": "speaking", "created_at": 10.0},
+    )
+    fake.emit(
+        "user_input_transcribed",
+        {"transcript": "book a table", "is_final": True, "created_at": 10.9},
+    )
+
+    stt = next(event for event in sink.events if event["event_type"] == "stt.completed")
+    assert stt["duration_ms"] == pytest.approx(900.0)
+
+
 @pytest.mark.asyncio
 async def test_adapter_accepts_livekit_public_event_models() -> None:
     pytest.importorskip("livekit.agents")

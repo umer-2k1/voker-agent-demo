@@ -62,7 +62,7 @@ test("renders each chart with an accessible summary", () => {
   const images = screen.getAllByRole("img");
   expect(images.map((node) => node.getAttribute("aria-label"))).toEqual(
     expect.arrayContaining([
-      expect.stringMatching(/Area chart of call volume: 3 sessions over 3 days/),
+      expect.stringMatching(/Bar chart of call volume: 3 sessions over 3 days/),
       expect.stringMatching(/Donut chart of outcomes: Resolved 4, Abandoned 2/),
       expect.stringMatching(/Bar chart of latency by stage/),
       expect.stringMatching(/Bar chart of voice issue impact/),

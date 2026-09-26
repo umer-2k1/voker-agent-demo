@@ -1,4 +1,9 @@
 import "@testing-library/jest-dom/vitest";
+import { configure } from "@testing-library/react";
+
+// Lazy-loaded routes/components resolve asynchronously; give `findBy*` queries
+// room instead of the 1s default.
+configure({ asyncUtilTimeout: 5000 });
 
 // jsdom does not implement matchMedia, which sonner (toasts) and several
 // shadcn primitives read during mount.

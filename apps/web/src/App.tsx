@@ -595,7 +595,9 @@ function RequireDashboardUser() {
   if (account.isError)
     return (
       <main className="auth-loading">
-        <p>We could not verify your session. Please refresh.</p>
+        <span className="brand-mark">V</span>
+        <H1 className="text-lg">We could not verify your session</H1>
+        <p>Please refresh the page to try again.</p>
       </main>
     );
   return <AppShell account={account.data} />;

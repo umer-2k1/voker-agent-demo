@@ -33,6 +33,18 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-soft: var(--info-soft);
+  --color-destructive-soft: var(--destructive-soft);
 }
 
 :root {
@@ -60,6 +72,22 @@
   --chart-3: #4f46e5;
   --chart-4: #d97706;
   --chart-5: #be123c;
+  /* Popover surface for floating layers (select menus, dropdowns). */
+  --popover: #ffffff;
+  --popover-foreground: #173c36;
+  /* Status palette — reusable semantics for badges, dots, and alerts.
+     Each has a strong `-` colour for text/icons and a `-soft` background
+     tint; pairs are checked for ≥4.5:1 text contrast. */
+  --success: #0f6d5c;
+  --success-foreground: #ffffff;
+  --success-soft: #e4f4ef;
+  --warning: #a15c07;
+  --warning-foreground: #ffffff;
+  --warning-soft: #fbf0dd;
+  --info: #1e40af;
+  --info-foreground: #ffffff;
+  --info-soft: #e8eefc;
+  --destructive-soft: #fbe9e6;
   font-family: "Avenir Next", Avenir, "Segoe UI", ui-sans-serif, sans-serif;
   color: var(--foreground);
   background: var(--background);
@@ -1552,89 +1580,6 @@ h2 {
   border-radius: 8px;
   margin: 16px 20px;
 }
-.session-list {
-  max-height: 600px;
-  overflow: auto;
-}
-.session-filters {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto minmax(90px, 0.45fr) auto;
-  padding: 12px 16px;
-}
-.session-controls {
-  border-bottom: 1px solid #e7eeec;
-}
-.saved-filter-row,
-.status-legend {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  padding: 0 16px 12px;
-}
-.saved-filter-row > span {
-  color: #526b67;
-  font-size: 11px;
-  font-weight: 700;
-  margin-right: 2px;
-}
-.saved-filter-row button {
-  background: #f0f8f6;
-  border: 1px solid #c9ded9;
-  border-radius: 999px;
-  color: #176258;
-  font-size: 11px;
-  padding: 5px 8px;
-}
-.saved-filter-row .save-filter {
-  background: white;
-}
-.status-legend {
-  background: #f8faf9;
-  border-bottom: 1px solid #e7eeec;
-  color: #506a65;
-  font-size: 11px;
-  gap: 14px;
-  padding-top: 9px;
-}
-.status-legend span {
-  align-items: center;
-  display: inline-flex;
-  gap: 6px;
-}
-.status-legend .status-dot {
-  display: inline-block;
-}
-.status-dot.in_progress {
-  background: #dd9d36;
-}
-.session-empty-state {
-  margin: 22px;
-  max-width: 480px;
-}
-.session-empty-state strong {
-  color: #24453f;
-  display: block;
-  font-size: 15px;
-}
-.session-empty-state p {
-  color: #526b67;
-  font-size: 13px;
-  line-height: 1.55;
-  margin: 7px 0 0;
-}
-.session-filters input,
-.session-filters select {
-  background: #fff;
-  border: 1px solid #d5e2df;
-  border-radius: 7px;
-  color: #24453f;
-  font: inherit;
-  font-size: 12px;
-  min-width: 0;
-  padding: 8px 9px;
-}
 .pagination {
   align-items: center;
   border-top: 1px solid #edf1f0;
@@ -1791,53 +1736,18 @@ h2 {
   padding: 16px 20px;
   white-space: pre-wrap;
 }
-.session-row {
-  align-items: center;
-  background: white;
-  border: 0;
-  border-bottom: 1px solid #edf1f0;
-  cursor: pointer;
-  display: grid;
-  gap: 10px;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
-  padding: 14px 16px;
-  text-align: left;
-  width: 100%;
-}
-.session-row:hover,
-.session-row.selected {
-  background: #f0f8f6;
-}
-.status-dot,
 .timeline-dot {
   background: #93aaa5;
   border-radius: 50%;
   height: 8px;
   width: 8px;
 }
-.status-dot.error,
 .timeline-dot.error {
   background: #d95849;
 }
-.status-dot.completed,
 .timeline-dot.ok {
   background: #20a28b;
 }
-.session-name,
-.session-events {
-  color: #24453f;
-  font-size: 13px;
-  font-weight: 650;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.session-events {
-  color: #53736d;
-  text-align: right;
-}
-.session-name small,
-.session-events small,
 .timeline small {
   color: #526b67;
   display: block;
@@ -2033,12 +1943,6 @@ h2 {
   }
   .workspace-grid {
     grid-template-columns: 1fr;
-  }
-  .session-filters {
-    grid-template-columns: 1fr 1fr;
-  }
-  .session-filters input:first-child {
-    grid-column: 1 / -1;
   }
   .recording-player {
     align-items: stretch;

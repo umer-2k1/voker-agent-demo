@@ -1,11 +1,31 @@
-import { Card, CardHeader } from "@/components/ui/card";
 import { useState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+  Waves,
+} from "lucide-react";
+
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
 import type { SessionPage, VoiceSession } from "@/components/dashboard/types";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -14,6 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 type SavedFilter = {
   name: string;
@@ -30,7 +51,38 @@ type SavedFilter = {
   minLatency: string;
   sort: string;
 };
+
 const savedFiltersKey = "voker-session-filters";
+
+type Option = { value: string; label: string };
+
+const STATUS_OPTIONS: Option[] = [
+  { value: "", label: "All statuses" },
+  { value: "in_progress", label: "In progress" },
+  { value: "completed", label: "Completed" },
+  { value: "failed", label: "Failed" },
+];
+
+const SORT_OPTIONS: Option[] = [
+  { value: "started_at_desc", label: "Newest first" },
+  { value: "started_at_asc", label: "Oldest first" },
+  { value: "errors_desc", label: "Most errors" },
+  { value: "events_desc", label: "Most activity" },
+];
+
+const OUTCOME_OPTIONS: Option[] = [
+  { value: "", label: "All outcomes" },
+  { value: "success", label: "Success" },
+  { value: "failed", label: "Failed" },
+  { value: "escalated", label: "Escalated" },
+  { value: "abandoned", label: "Abandoned" },
+];
+
+const ERROR_OPTIONS: Option[] = [
+  { value: "", label: "With or without errors" },
+  { value: "true", label: "Has errors" },
+  { value: "false", label: "No errors" },
+];
 
 function outcomeLabel(session: VoiceSession) {
   if (session.outcome === "resolved" || session.outcome === "success") return "Resolved";
@@ -39,10 +91,37 @@ function outcomeLabel(session: VoiceSession) {
   return "Unknown";
 }
 
-function statusVariant(session: VoiceSession) {
-  if (session.error_count || session.status === "failed") return "destructive" as const;
-  if (session.outcome === "resolved" || session.outcome === "success") return "default" as const;
+function outcomeVariant(session: VoiceSession) {
+  if (session.outcome === "resolved" || session.outcome === "success")
+    return "success" as const;
+  if (session.outcome === "escalated") return "warning" as const;
+  if (session.outcome === "abandoned" || session.outcome === "failed")
+    return "destructive" as const;
   return "secondary" as const;
+}
+
+/** Coarse review state drives the leading status dot. */
+function reviewState(session: VoiceSession) {
+  if (session.error_count > 0 || session.status === "failed")
+    return { tone: "bg-destructive", label: "Needs review" };
+  if (session.status === "in_progress")
+    return { tone: "bg-warning", label: "In progress" };
+  return { tone: "bg-success", label: "Complete" };
+}
+
+function formatStarted(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatDuration(ms: number | null | undefined) {
+  if (ms == null) return "Live";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  return `${(ms / 1000).toFixed(1)} s`;
 }
 
 function readSavedFilters(): SavedFilter[] {
@@ -53,6 +132,56 @@ function readSavedFilters(): SavedFilter[] {
   } catch {
     return [];
   }
+}
+
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+  className,
+}: {
+  label: string;
+  value: string;
+  options: Option[];
+  onChange(value: string): void;
+  className?: string;
+}) {
+  return (
+    <Select
+      value={value === "" ? "all" : value}
+      onValueChange={(next) => onChange(next === "all" ? "" : next)}
+    >
+      <SelectTrigger aria-label={label} className={cn("w-full", className)}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value || "all"} value={option.value || "all"}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function StatChip({
+  tone,
+  label,
+  value,
+}: {
+  tone: string;
+  label: string;
+  value: number;
+}) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/60 px-3 py-1 text-xs text-muted-foreground">
+      <i className={cn("size-2 rounded-full", tone)} aria-hidden="true" />
+      <span className="font-medium text-foreground">{value}</span>
+      {label}
+    </span>
+  );
 }
 
 export function SessionsPanel({
@@ -120,18 +249,60 @@ export function SessionsPanel({
 }) {
   const [savedFilters, setSavedFilters] =
     useState<SavedFilter[]>(readSavedFilters);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
   const triagedSessions = [...sessions].sort((left, right) => {
-    const leftPriority =
-      left.error_count > 0 ? 0 : left.status === "in_progress" ? 1 : 2;
-    const rightPriority =
-      right.error_count > 0 ? 0 : right.status === "in_progress" ? 1 : 2;
-    return leftPriority - rightPriority;
+    const priority = (session: VoiceSession) =>
+      session.error_count > 0 ? 0 : session.status === "in_progress" ? 1 : 2;
+    return priority(left) - priority(right);
   });
-  const needsAttention = sessions.filter(
-    (session) => session.error_count > 0,
+
+  const needsReview = sessions.filter((s) => s.error_count > 0).length;
+  const inProgress = sessions.filter((s) => s.status === "in_progress").length;
+  const complete = sessions.filter(
+    (s) => s.status !== "in_progress" && s.error_count === 0,
   ).length;
+
+  const advancedFilterCount = [
+    environment,
+    agent,
+    version,
+    outcome,
+    hasError,
+    startedAfter,
+    startedBefore,
+    minLatency,
+  ].filter(Boolean).length;
+  const hasFilters = Boolean(
+    search ||
+      status ||
+      source ||
+      environment ||
+      agent ||
+      version ||
+      outcome ||
+      hasError ||
+      startedAfter ||
+      startedBefore ||
+      minLatency,
+  );
+
+  function clearFilters() {
+    onSearch("");
+    onStatus("");
+    onSource("");
+    onEnvironment("");
+    onAgent("");
+    onVersion("");
+    onOutcome("");
+    onHasError("");
+    onStartedAfter("");
+    onStartedBefore("");
+    onMinLatency("");
+  }
+
   function saveCurrentFilter() {
-    const name = `Filter ${savedFilters.length + 1}`;
+    const name = `View ${savedFilters.length + 1}`;
     const next = [
       ...savedFilters,
       {
@@ -153,273 +324,354 @@ export function SessionsPanel({
     localStorage.setItem(savedFiltersKey, JSON.stringify(next));
     setSavedFilters(next);
   }
+
   return (
-    <Card className="panel sessions-panel" id="sessions">
-      <CardHeader className="panel-heading">
-        <div>
+    <Card className="overflow-hidden" id="sessions-queue">
+      <CardHeader className="flex flex-col gap-4 border-b border-border sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-1">
           <p className="eyebrow">Investigation queue</p>
-          <h2>Sessions needing attention</h2>
-        </div>
-        <span>
-          {needsAttention
-            ? `${needsAttention} need review`
-            : `${page.total} captured`}
-        </span>
-      </CardHeader>
-      {loading ? <LoadingSkeleton rows={5} /> : null}
-      <div className="session-controls">
-        <div className="session-filters">
-          <Input
-            aria-label="Search sessions"
-            placeholder="Search session ID"
-            value={search}
-            onChange={(event) => onSearch(event.target.value)}
-          />
-          <NativeSelect
-            aria-label="Filter by status"
-            value={status}
-            onChange={(event) => onStatus(event.target.value)}
-          >
-            <option value="">All statuses</option>
-            <option value="in_progress">In progress</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
-          </NativeSelect>
-          <Input
-            aria-label="Filter by source"
-            placeholder="Source"
-            value={source}
-            onChange={(event) => onSource(event.target.value)}
-          />
-          <NativeSelect
-            aria-label="Sort sessions"
-            value={sort}
-            onChange={(event) => onSort(event.target.value)}
-          >
-            <option value="started_at_desc">Newest first</option>
-            <option value="started_at_asc">Oldest first</option>
-            <option value="errors_desc">Most errors</option>
-            <option value="events_desc">Most activity</option>
-          </NativeSelect>
-        </div>
-        <details className="rounded-lg border border-emerald-950/10 bg-emerald-50/30 p-3">
-          <summary className="cursor-pointer text-sm font-semibold text-emerald-900">
-            More filters
-          </summary>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Input
-              aria-label="Filter by environment"
-              placeholder="Environment"
-              value={environment}
-              onChange={(event) => onEnvironment(event.target.value)}
-            />
-            <Input
-              aria-label="Filter by agent"
-              placeholder="Agent"
-              value={agent}
-              onChange={(event) => onAgent(event.target.value)}
-            />
-            <Input
-              aria-label="Filter by agent version"
-              placeholder="Agent version"
-              value={version}
-              onChange={(event) => onVersion(event.target.value)}
-            />
-            <NativeSelect
-              aria-label="Filter by outcome"
-              value={outcome}
-              onChange={(event) => onOutcome(event.target.value)}
-            >
-              <option value="">All outcomes</option>
-              <option value="success">Success</option>
-              <option value="failed">Failed</option>
-              <option value="escalated">Escalated</option>
-              <option value="abandoned">Abandoned</option>
-            </NativeSelect>
-            <NativeSelect
-              aria-label="Filter by errors"
-              value={hasError}
-              onChange={(event) => onHasError(event.target.value)}
-            >
-              <option value="">With or without errors</option>
-              <option value="true">Has errors</option>
-              <option value="false">No errors</option>
-            </NativeSelect>
-            <Input
-              aria-label="Started after"
-              type="date"
-              value={startedAfter}
-              onChange={(event) => onStartedAfter(event.target.value)}
-            />
-            <Input
-              aria-label="Started before"
-              type="date"
-              value={startedBefore}
-              onChange={(event) => onStartedBefore(event.target.value)}
-            />
-            <Input
-              aria-label="Minimum span latency in milliseconds"
-              inputMode="numeric"
-              min="0"
-              type="number"
-              placeholder="Min latency (ms)"
-              value={minLatency}
-              onChange={(event) => onMinLatency(event.target.value)}
-            />
-          </div>
-        </details>
-        <div className="saved-filter-row">
-          <span>Saved views</span>
-          {savedFilters.map((filter) => (
-            <Button
-              key={`${filter.name}-${filter.sort}`}
-              type="button"
-              onClick={() => {
-                onSearch(filter.search);
-                onStatus(filter.status);
-                onSource(filter.source);
-                onEnvironment(filter.environment ?? "");
-                onAgent(filter.agent ?? "");
-                onVersion(filter.version ?? "");
-                onOutcome(filter.outcome ?? "");
-                onHasError(filter.hasError ?? "");
-                onStartedAfter(filter.startedAfter ?? "");
-                onStartedBefore(filter.startedBefore ?? "");
-                onMinLatency(filter.minLatency ?? "");
-                onSort(filter.sort);
-              }}
-            >
-              {filter.name}
-            </Button>
-          ))}
-          <Button
-            className="save-filter"
-            size="sm"
-            variant="outline"
-            type="button"
-            onClick={saveCurrentFilter}
-          >
-            Save current view
-          </Button>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-2 px-5 pb-3 text-xs text-muted-foreground" aria-label="Session status legend">
-        <Badge variant="destructive">Needs review</Badge>
-        <Badge variant="secondary">In progress</Badge>
-        <Badge variant="outline">Complete</Badge>
-        <span>Intent and resolution are captured on the same session record.</span>
-      </div>
-      {!loading && !sessions.length ? (
-        <div className="session-empty-state">
-          <strong>
-            {search ||
-            status ||
-            source ||
-            environment ||
-            agent ||
-            version ||
-            outcome ||
-            hasError ||
-            startedAfter ||
-            startedBefore ||
-            minLatency
-              ? "No sessions match this view."
-              : "Your investigation queue is ready."}
-          </strong>
-          <p>
-            {search ||
-            status ||
-            source ||
-            environment ||
-            agent ||
-            version ||
-            outcome ||
-            hasError ||
-            startedAfter ||
-            startedBefore ||
-            minLatency
-              ? "Clear a filter or try a saved view to broaden the queue."
-              : "Connect the Python SDK or send canonical events. The first call will appear here with its trace, transcript, and evidence."}
+          <h2 className="text-lg font-semibold tracking-tight">
+            Sessions needing attention
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {needsReview
+              ? `${needsReview} of ${page.total} captured sessions need review.`
+              : `${page.total} captured sessions are healthy.`}
           </p>
         </div>
-      ) : null}
-      {sessions.length ? (
-        <div className="px-3 pb-3">
+        <div className="flex flex-wrap gap-2" aria-label="Session review summary">
+          <StatChip tone="bg-destructive" label="need review" value={needsReview} />
+          <StatChip tone="bg-warning" label="in progress" value={inProgress} />
+          <StatChip tone="bg-success" label="complete" value={complete} />
+        </div>
+      </CardHeader>
+
+      <CardContent className="p-0">
+        <div className="flex flex-col gap-3 border-b border-border p-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_11rem_10rem_11rem]">
+            <div className="relative min-w-0 sm:col-span-2 xl:col-span-1">
+              <Search
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                aria-label="Search sessions"
+                className="pl-9"
+                placeholder="Search session ID"
+                value={search}
+                onChange={(event) => onSearch(event.target.value)}
+              />
+            </div>
+            <FilterSelect
+              label="Filter by status"
+              value={status}
+              options={STATUS_OPTIONS}
+              onChange={onStatus}
+            />
+            <Input
+              aria-label="Filter by source"
+              placeholder="Source"
+              value={source}
+              onChange={(event) => onSource(event.target.value)}
+            />
+            <FilterSelect
+              label="Sort sessions"
+              value={sort}
+              options={SORT_OPTIONS}
+              onChange={onSort}
+            />
+          </div>
+
+          <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-fit text-muted-foreground"
+              >
+                <SlidersHorizontal data-icon="inline-start" />
+                More filters
+                {advancedFilterCount ? (
+                  <Badge variant="info" className="ml-1">
+                    {advancedFilterCount}
+                  </Badge>
+                ) : null}
+                <ChevronRight
+                  data-icon="inline-end"
+                  className={cn(
+                    "transition-transform",
+                    filtersOpen && "rotate-90",
+                  )}
+                />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Input
+                  aria-label="Filter by environment"
+                  placeholder="Environment"
+                  value={environment}
+                  onChange={(event) => onEnvironment(event.target.value)}
+                />
+                <Input
+                  aria-label="Filter by agent"
+                  placeholder="Agent"
+                  value={agent}
+                  onChange={(event) => onAgent(event.target.value)}
+                />
+                <Input
+                  aria-label="Filter by agent version"
+                  placeholder="Agent version"
+                  value={version}
+                  onChange={(event) => onVersion(event.target.value)}
+                />
+                <FilterSelect
+                  label="Filter by outcome"
+                  value={outcome}
+                  options={OUTCOME_OPTIONS}
+                  onChange={onOutcome}
+                />
+                <FilterSelect
+                  label="Filter by errors"
+                  value={hasError}
+                  options={ERROR_OPTIONS}
+                  onChange={onHasError}
+                />
+                <Input
+                  aria-label="Started after"
+                  type="date"
+                  value={startedAfter}
+                  onChange={(event) => onStartedAfter(event.target.value)}
+                />
+                <Input
+                  aria-label="Started before"
+                  type="date"
+                  value={startedBefore}
+                  onChange={(event) => onStartedBefore(event.target.value)}
+                />
+                <Input
+                  aria-label="Minimum span latency in milliseconds"
+                  inputMode="numeric"
+                  min="0"
+                  type="number"
+                  placeholder="Min latency (ms)"
+                  value={minLatency}
+                  onChange={(event) => onMinLatency(event.target.value)}
+                />
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">
+              Saved views
+            </span>
+            {savedFilters.map((filter) => (
+              <Button
+                key={`${filter.name}-${filter.sort}`}
+                variant="secondary"
+                size="xs"
+                type="button"
+                className="rounded-full"
+                onClick={() => {
+                  onSearch(filter.search);
+                  onStatus(filter.status);
+                  onSource(filter.source);
+                  onEnvironment(filter.environment ?? "");
+                  onAgent(filter.agent ?? "");
+                  onVersion(filter.version ?? "");
+                  onOutcome(filter.outcome ?? "");
+                  onHasError(filter.hasError ?? "");
+                  onStartedAfter(filter.startedAfter ?? "");
+                  onStartedBefore(filter.startedBefore ?? "");
+                  onMinLatency(filter.minLatency ?? "");
+                  onSort(filter.sort);
+                }}
+              >
+                {filter.name}
+              </Button>
+            ))}
+            <Button
+              className="rounded-full"
+              size="xs"
+              variant="outline"
+              type="button"
+              onClick={saveCurrentFilter}
+            >
+              Save current view
+            </Button>
+            {hasFilters ? (
+              <Button
+                className="rounded-full text-muted-foreground"
+                size="xs"
+                variant="ghost"
+                type="button"
+                onClick={clearFilters}
+              >
+                <RotateCcw data-icon="inline-start" />
+                Reset
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        <div
+          className="flex flex-wrap items-center gap-2 px-4 py-3 text-xs text-muted-foreground"
+          aria-label="Session status legend"
+        >
+          <Badge variant="destructive">Needs review</Badge>
+          <Badge variant="warning">In progress</Badge>
+          <Badge variant="success">Complete</Badge>
+          <Badge variant="secondary">Unknown outcome</Badge>
+          <span>Intent and resolution are captured on the same session record.</span>
+        </div>
+
+        {loading ? <LoadingSkeleton rows={5} /> : null}
+
+        {!loading && !sessions.length ? (
+          <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+            <span className="flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <Waves className="size-5" aria-hidden="true" />
+            </span>
+            <strong className="text-base font-semibold">
+              {hasFilters
+                ? "No sessions match this view."
+                : "Your investigation queue is ready."}
+            </strong>
+            <p className="max-w-md text-sm leading-6 text-muted-foreground">
+              {hasFilters
+                ? "Clear a filter or try a saved view to broaden the queue."
+                : "Connect the Python SDK or send canonical events. The first call will appear here with its trace, transcript, and evidence."}
+            </p>
+            {hasFilters ? (
+              <Button variant="outline" size="sm" onClick={clearFilters}>
+                <RotateCcw data-icon="inline-start" />
+                Reset filters
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {sessions.length ? (
           <Table aria-label="Session investigation queue">
-            <TableHeader>
-              <TableRow>
+            <TableHeader className="[&_tr]:border-border">
+              <TableRow className="hover:bg-transparent">
                 <TableHead>Session</TableHead>
                 <TableHead>Intent</TableHead>
-                <TableHead>Resolution</TableHead>
+                <TableHead>Outcome</TableHead>
                 <TableHead className="text-right">Signals</TableHead>
                 <TableHead className="text-right">Events</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {triagedSessions.map((session) => (
-                <TableRow data-state={selectedId === session.id ? "selected" : undefined} key={session.id}>
-                  <TableCell className="min-w-64">
-                    <button
-                      className="group flex w-full flex-col items-start gap-1 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      onClick={() => onSelect(session.id)}
-                    >
-                      <span className="font-medium text-foreground group-hover:underline">
-                        {session.external_session_id}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {session.source} · {session.environment ?? "default"} · {new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(session.started_at))}
-                      </span>
-                    </button>
-                  </TableCell>
-                  <TableCell>
-                    {session.intent ? (
-                      <div className="space-y-1">
-                        <p className="max-w-44 truncate font-medium text-foreground">{session.intent.replaceAll("_", " ")}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {session.intent_confidence != null ? `${Math.round(session.intent_confidence * 100)}% confidence` : session.intent_source ?? "observed"}
-                        </p>
-                      </div>
-                    ) : <span className="text-muted-foreground">Not observed</span>}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariant(session)}>{outcomeLabel(session)}</Badge>
-                    <p className="mt-1 text-xs text-muted-foreground">{session.outcome_source ?? "No resolution evidence"}</p>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    <p className={session.error_count ? "font-semibold text-destructive" : "text-foreground"}>
-                      {session.error_count ? `${session.error_count} error${session.error_count === 1 ? "" : "s"}` : session.status.replaceAll("_", " ")}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {session.duration_ms == null ? "Live" : `${(session.duration_ms / 1000).toFixed(1)}s`}
-                    </p>
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">{session.event_count}</TableCell>
-                </TableRow>
-              ))}
+              {triagedSessions.map((session) => {
+                const review = reviewState(session);
+                return (
+                  <TableRow
+                    key={session.id}
+                    data-state={selectedId === session.id ? "selected" : undefined}
+                  >
+                    <TableCell className="min-w-64">
+                      <button
+                        className="group flex w-full items-center justify-between gap-3 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => onSelect(session.id)}
+                      >
+                        <span className="flex min-w-0 items-center gap-2.5">
+                          <i
+                            className={cn("size-2 shrink-0 rounded-full", review.tone)}
+                            aria-hidden="true"
+                          />
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate font-medium text-foreground group-hover:underline">
+                              {session.external_session_id}
+                            </span>
+                            <span className="truncate text-xs text-muted-foreground">
+                              {session.source} · {session.environment ?? "default"} ·{" "}
+                              {formatStarted(session.started_at)}
+                            </span>
+                          </span>
+                        </span>
+                        <ChevronRight
+                          className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      {session.intent ? (
+                        <div className="space-y-1">
+                          <p className="max-w-44 truncate font-medium text-foreground">
+                            {session.intent.replaceAll("_", " ")}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {session.intent_confidence != null
+                              ? `${Math.round(session.intent_confidence * 100)}% confidence`
+                              : session.intent_source ?? "observed"}
+                          </p>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">Not observed</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={outcomeVariant(session)}>
+                        {outcomeLabel(session)}
+                      </Badge>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {session.outcome_source ?? "No resolution evidence"}
+                      </p>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <p
+                        className={cn(
+                          session.error_count && "font-semibold text-destructive",
+                        )}
+                      >
+                        {session.error_count
+                          ? `${session.error_count} error${session.error_count === 1 ? "" : "s"}`
+                          : review.label}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDuration(session.duration_ms)}
+                      </p>
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+                      {session.event_count}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
-        </div>
-      ) : null}
-      {page.total > page.limit ? (
-        <div className="pagination">
-          <Button
-            disabled={page.offset === 0}
-            onClick={() => onPage(Math.max(0, page.offset - page.limit))}
-          >
-            Previous
-          </Button>
-          <span>
-            {page.offset + 1}–{Math.min(page.offset + page.limit, page.total)}{" "}
-            of {page.total}
-          </span>
-          <Button
-            disabled={page.offset + page.limit >= page.total}
-            onClick={() => onPage(page.offset + page.limit)}
-          >
-            Next
-          </Button>
-        </div>
-      ) : null}
+        ) : null}
+
+        {page.total > page.limit ? (
+          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page.offset === 0}
+              onClick={() => onPage(Math.max(0, page.offset - page.limit))}
+            >
+              <ChevronLeft data-icon="inline-start" />
+              Previous
+            </Button>
+            <span className="tabular-nums">
+              {page.offset + 1}–{Math.min(page.offset + page.limit, page.total)} of{" "}
+              {page.total}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page.offset + page.limit >= page.total}
+              onClick={() => onPage(page.offset + page.limit)}
+            >
+              Next
+              <ChevronRight data-icon="inline-end" />
+            </Button>
+          </div>
+        ) : null}
+      </CardContent>
     </Card>
   );
 }

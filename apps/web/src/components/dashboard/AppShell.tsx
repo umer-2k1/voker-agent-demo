@@ -1,16 +1,25 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { CSSProperties } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Bot,
+  ChevronsUpDown,
   Headphones,
   LayoutDashboard,
+  LogOut,
   PlugZap,
   Settings,
 } from "lucide-react";
 
 import type { Account } from "@/pages/AccountPage";
-import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarContent,
@@ -19,10 +28,12 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
+  SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarRail,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -36,6 +47,20 @@ const navigation = [
   { label: "Agents", to: "/agents", icon: Bot, end: false },
   { label: "Workspace settings", to: "/settings", icon: Settings, end: false },
 ] as const;
+
+const routeLabels: Array<[string, string]> = [
+  ["/sessions", "Sessions"],
+  ["/setup", "Setup"],
+  ["/agents", "Agents"],
+  ["/settings", "Workspace settings"],
+];
+
+function routeLabel(pathname: string) {
+  return (
+    routeLabels.find(([prefix]) => pathname.startsWith(prefix))?.[1] ??
+    "Overview"
+  );
+}
 
 function initials(account: Account) {
   const value = account.display_name?.trim() || account.email;
@@ -65,87 +90,114 @@ function DashboardSidebar({
   const { setOpenMobile } = useSidebar();
 
   return (
-    <Sidebar
-      aria-label="Primary navigation"
-      className="voker-sidebar"
-      collapsible="offcanvas"
-    >
-      <SidebarHeader className="voker-sidebar-header">
-        <NavLink
-          aria-label="Voker overview"
-          className="brand"
-          onClick={() => setOpenMobile(false)}
-          to="/"
-        >
-          <span className="brand-mark" aria-hidden="true">
-            V
-          </span>
-          <span>Voker</span>
-        </NavLink>
+    <Sidebar collapsible="icon" aria-label="Primary navigation">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild size="lg" tooltip="Voker">
+              <NavLink
+                aria-label="Voker overview"
+                onClick={() => setOpenMobile(false)}
+                to="/"
+              >
+                <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground">
+                  V
+                </span>
+                <span className="font-display text-base font-semibold tracking-tight">
+                  Voker
+                </span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
 
-      <SidebarContent className="overflow-hidden">
-        <SidebarGroup className="voker-sidebar-group">
-          <SidebarGroupLabel className="voker-sidebar-label">
-            Voice operations
-          </SidebarGroupLabel>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Voice operations</SidebarGroupLabel>
           <SidebarGroupContent>
-            <nav aria-label="Dashboard">
-              <SidebarMenu>
-                {navigation.map(({ label, to, icon: Icon, end }) => {
-                  const isActive = end
-                    ? location.pathname === to
-                    : location.pathname === to ||
-                      location.pathname.startsWith(`${to}/`);
-
-                  return (
-                    <SidebarMenuItem key={to}>
-                      <SidebarMenuButton
-                        asChild
-                        className="voker-sidebar-link"
-                        isActive={isActive}
-                        size="lg"
-                        tooltip={label}
+            <SidebarMenu>
+              {navigation.map(({ label, to, icon: Icon, end }) => {
+                const isActive = end
+                  ? location.pathname === to
+                  : location.pathname === to ||
+                    location.pathname.startsWith(`${to}/`);
+                return (
+                  <SidebarMenuItem key={to}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      tooltip={label}
+                    >
+                      <NavLink
+                        end={end}
+                        onClick={() => setOpenMobile(false)}
+                        to={to}
                       >
-                        <NavLink
-                          onClick={() => setOpenMobile(false)}
-                          to={to}
-                          end={end}
-                        >
-                          <Icon aria-hidden="true" />
-                          <span>{label}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </nav>
+                        <Icon aria-hidden="true" />
+                        <span>{label}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="voker-sidebar-footer">
-        <div className="account-menu">
-          <span className="account-avatar" aria-hidden="true">
-            {initials(account)}
-          </span>
-          <div>
-            <b>{account.display_name ?? "Google account"}</b>
-            <span>{account.email}</span>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="signout-button"
-            disabled={isSigningOut}
-            onClick={onLogout}
-          >
-            {isSigningOut ? "Signing out…" : "Sign out"}
-          </Button>
-          {logoutFailed ? <small>Could not sign out. Try again.</small> : null}
-        </div>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton
+                  aria-label="Account menu"
+                  size="lg"
+                  tooltip={account.display_name ?? account.email}
+                >
+                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-sidebar-accent text-xs font-semibold text-sidebar-accent-foreground">
+                    {initials(account)}
+                  </span>
+                  <span className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-medium">
+                      {account.display_name ?? "Google account"}
+                    </span>
+                    <span className="truncate text-xs text-sidebar-foreground/70">
+                      {account.email}
+                    </span>
+                  </span>
+                  <ChevronsUpDown className="ml-auto size-4" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60" side="right">
+                <DropdownMenuLabel>
+                  <span className="block truncate text-sm font-medium">
+                    {account.display_name ?? "Google account"}
+                  </span>
+                  <span className="block truncate text-xs font-normal text-muted-foreground">
+                    {account.email}
+                  </span>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={isSigningOut}
+                  onClick={onLogout}
+                >
+                  <LogOut className="size-4" />
+                  {isSigningOut ? "Signing out…" : "Sign out"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {logoutFailed ? (
+              <p className="px-2 pt-1 text-xs text-destructive">
+                Could not sign out. Try again.
+              </p>
+            ) : null}
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
+      <SidebarRail />
     </Sidebar>
   );
 }
@@ -153,6 +205,7 @@ function DashboardSidebar({
 export function AppShell({ account }: { account: Account }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const location = useLocation();
   const logout = useMutation({
     mutationFn: async () => {
       const response = await fetch(`${apiBaseUrl}/auth/logout`, {
@@ -168,10 +221,7 @@ export function AppShell({ account }: { account: Account }) {
   });
 
   return (
-    <SidebarProvider
-      className="dashboard-sidebar-root"
-      style={{ "--sidebar-width": "224px" } as CSSProperties}
-    >
+    <SidebarProvider className="dashboard-sidebar-root">
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
@@ -181,23 +231,22 @@ export function AppShell({ account }: { account: Account }) {
         logoutFailed={logout.isError}
         onLogout={() => logout.mutate()}
       />
-      <div className="dashboard-scroll-region">
-        <header className="mobile-dashboard-nav">
-          <NavLink className="mobile-brand" to="/">
-            <span className="brand-mark" aria-hidden="true">
-              V
-            </span>
-            <span>Voker</span>
-          </NavLink>
-          <SidebarTrigger
-            aria-label="Open navigation menu"
-            className="mobile-menu-trigger"
-          />
+      <SidebarInset className="min-w-0">
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/80 px-3 backdrop-blur sm:px-4">
+          <SidebarTrigger aria-label="Toggle navigation" />
+          <Separator className="mx-1 h-5" orientation="vertical" />
+          <span className="hidden text-sm text-muted-foreground sm:inline">
+            Voice operations
+          </span>
+          <span className="hidden text-muted-foreground sm:inline">/</span>
+          <span className="truncate text-sm font-medium">
+            {routeLabel(location.pathname)}
+          </span>
         </header>
-        <div id="main-content">
+        <div className="min-w-0" id="main-content">
           <Outlet />
         </div>
-      </div>
+      </SidebarInset>
     </SidebarProvider>
   );
 }

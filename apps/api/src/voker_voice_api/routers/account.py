@@ -1,7 +1,7 @@
 """Google-authenticated dashboard session endpoints."""
 
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from authlib.integrations.starlette_client import OAuth  # type: ignore[import-untyped]
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -9,11 +9,71 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from voker_voice_api.bootstrap import ensure_development_seed
 from voker_voice_api.config import get_settings
 from voker_voice_api.database import get_db
-from voker_voice_api.models import Organization, OrganizationMember, User
+from voker_voice_api.models import (
+    Agent,
+    Environment,
+    Organization,
+    OrganizationMember,
+    Project,
+    User,
+)
 
 router = APIRouter(prefix="/auth", tags=["account"])
+
+
+def ensure_default_workspace(user: User, db: Session) -> None:
+    """Ensure every authenticated user can act immediately in the dashboard."""
+
+    membership = db.scalar(
+        select(OrganizationMember).where(
+            OrganizationMember.user_id == user.id,
+        )
+    )
+    if membership is not None:
+        return
+
+    if get_settings().app_env == "development":
+        organization, _, _, _ = ensure_development_seed(db)
+    else:
+        organization = Organization(
+            name=f"{user.display_name or user.email.split('@')[0]} workspace"
+        )
+        db.add(organization)
+        db.flush()
+        project = Project(
+            organization_id=organization.id,
+            name="Voice project",
+            slug=f"voice-{uuid4().hex[:8]}",
+        )
+        db.add(project)
+        db.flush()
+        environment = Environment(
+            project_id=project.id,
+            name="Development",
+            slug="development",
+            kind="development",
+        )
+        db.add(environment)
+        db.flush()
+        db.add(
+            Agent(
+                project_id=project.id,
+                name="Default agent",
+                slug="default-agent",
+                source="custom",
+            )
+        )
+    db.add(
+        OrganizationMember(
+            organization_id=organization.id,
+            user_id=user.id,
+            role="owner",
+        )
+    )
+    db.commit()
 
 
 def google_oauth() -> OAuth:
@@ -61,24 +121,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)) -> Re
     else:
         user.google_subject = subject
         user.display_name = claims.get("name") or user.display_name
-    if get_settings().app_env == "development":
-        organization = db.scalar(
-            select(Organization).where(Organization.name == "Voker Development")
-        )
-        if (
-            organization is not None
-            and db.scalar(
-                select(OrganizationMember).where(
-                    OrganizationMember.organization_id == organization.id,
-                    OrganizationMember.user_id == user.id,
-                )
-            )
-            is None
-        ):
-            db.add(
-                OrganizationMember(organization_id=organization.id, user_id=user.id, role="owner")
-            )
-    db.commit()
+    ensure_default_workspace(user, db)
     request.session["user_id"] = str(user.id)
     return RedirectResponse(url=get_settings().dashboard_url, status_code=303)
 
@@ -86,6 +129,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)) -> Re
 @router.get("/me")
 def current_account(request: Request, db: Session = Depends(get_db)) -> dict[str, str | None]:
     user = require_dashboard_user(request, db)
+    ensure_default_workspace(user, db)
     return {"id": str(user.id), "email": user.email, "display_name": user.display_name}
 
 

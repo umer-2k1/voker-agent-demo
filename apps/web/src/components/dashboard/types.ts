@@ -134,6 +134,13 @@ export type SessionPage = { offset: number; limit: number; total: number };
 
 export type Trace = {
   session: VoiceSession;
+  collection: {
+    last_event_type: string | null;
+    last_event_at: string | null;
+    last_received_at: string | null;
+    terminal_event_received: boolean;
+    diagnostic_log: string;
+  };
   event_page: SessionPage;
   voice_behavior: {
     interruptions: number;

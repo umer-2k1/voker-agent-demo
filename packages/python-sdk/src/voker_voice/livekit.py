@@ -7,6 +7,7 @@ typing so importing :mod:`voker_voice` never imports LiveKit itself.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 from collections.abc import Callable
@@ -83,10 +84,8 @@ def _context_metadata(context: Any) -> tuple[str | None, dict[str, Any]]:
     if context is None:
         return None, {"integration": "livekit", "transport": "livekit"}
     room = _value(context, "room")
-    room_name = _value(room, "name")
-    room_sid = _value(room, "sid")
-    if callable(room_sid):
-        room_sid = None
+    room_name = _context_value(_value(room, "name"))
+    room_sid = _context_value(_value(room, "sid"))
     metadata: dict[str, Any] = {
         "integration": "livekit",
         "transport": "livekit",
@@ -99,9 +98,9 @@ def _context_metadata(context: Any) -> tuple[str | None, dict[str, Any]]:
     for participant in values:
         participant_rows.append(
             {
-                "identity": _value(participant, "identity"),
-                "sid": _value(participant, "sid"),
-                "kind": str(_value(participant, "kind", "")) or None,
+                "identity": _context_value(_value(participant, "identity")),
+                "sid": _context_value(_value(participant, "sid")),
+                "kind": str(_context_value(_value(participant, "kind", ""))) or None,
             }
         )
     if participant_rows:
@@ -112,11 +111,29 @@ def _context_metadata(context: Any) -> tuple[str | None, dict[str, Any]]:
             job = job()
         except Exception:
             job = None
-    job_id = _value(job, "id")
+    job_id = _context_value(_value(job, "id"))
     if job_id:
         metadata["livekit_job_id"] = job_id
     inferred_id = str(room_name or room_sid) if room_name or room_sid else None
     return inferred_id, metadata
+
+
+def _context_value(value: Any) -> Any:
+    """Keep context metadata synchronous and JSON-safe.
+
+    LiveKit 1.8 exposes some room fields as async properties.  The observer
+    cannot await them while attaching synchronously, so omit them rather than
+    putting a coroutine into the SDK export queue.
+    """
+
+    if inspect.isawaitable(value):
+        close = getattr(value, "close", None)
+        if callable(close):
+            close()
+        return None
+    if callable(value):
+        return None
+    return value
 
 
 class LiveKitObserver:
@@ -128,12 +145,14 @@ class LiveKitObserver:
         session: VoiceSession,
         *,
         owns_session: bool,
+        owns_client: bool,
         agent: str,
         version: str | None,
     ) -> None:
         self.agent_session = agent_session
         self.session = session
         self.owns_session = owns_session
+        self.owns_client = owns_client
         self.agent_name = agent
         self.agent_version = version
         self._listeners: list[tuple[str, Callable[[Any], None]]] = []
@@ -152,6 +171,7 @@ class LiveKitObserver:
         self._tts_spans: dict[str, str] = {}
         self._tool_runs: dict[str, tuple[str, datetime, str, dict[str, Any]]] = {}
         self._completed_tools: set[str] = set()
+        self._latest_session_usage: dict[str, Any] | None = None
 
         if self.owns_session:
             self.session.emit(
@@ -200,11 +220,13 @@ class LiveKitObserver:
 
         return wrapped
 
-    def _emit(self, event_type: str, *, provider: str | None = None, **kwargs: Any) -> None:
+    def _emit(
+        self, event_type: str, *, provider: str | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
         source = {"integration": "livekit"}
         if provider:
             source["provider"] = provider
-        self.session.emit(
+        return self.session.emit(
             event_type,
             source=source,
             turn_id=kwargs.pop("turn_id", self._turn_id),
@@ -441,7 +463,6 @@ class LiveKitObserver:
         role = str(_value(item, "role", ""))
         if role not in {"user", "assistant"}:
             return
-        self._ensure_turn(occurred)
         text = _value(item, "text_content") or _value(item, "raw_text_content")
         if callable(text):
             try:
@@ -454,20 +475,46 @@ class LiveKitObserver:
                 text = "\n".join(part for part in content if isinstance(part, str)) or None
         attributes = {
             "role": role,
+            "speaker": "user" if role == "user" else "agent",
             "transcript": text,
             "livekit_item_id": _value(item, "id"),
             "interrupted": bool(_value(item, "interrupted", False)),
         }
+        if role == "user":
+            turn_id = self._ensure_turn(occurred)
+        else:
+            # A LiveKit conversation item is a speaker utterance, while the
+            # active pipeline turn represents the caller's request.  Reusing
+            # that caller turn for an assistant message overwrites its speaker
+            # and transcript in the dashboard. Materialize a small, separate
+            # agent turn so transcript rows always retain their real speaker.
+            item_id = _value(item, "id") or new_id("assistant-message")
+            turn_id = _external_id("turn", f"assistant:{item_id}")
+            self._emit(
+                "turn.started",
+                occurred_at=occurred,
+                status="unset",
+                turn_id=turn_id,
+                attributes={"speaker": "agent", "integration": "livekit"},
+            )
         self._emit(
             f"{role}.message",
             occurred_at=occurred,
             status="ok",
+            turn_id=turn_id,
             attributes=attributes,
             input={"text": text} if role == "user" and text else None,
             output={"text": text} if role == "assistant" and text else None,
         )
         if role == "assistant":
             self._turn_has_assistant = True
+            self._emit(
+                "turn.completed",
+                occurred_at=occurred,
+                status="ok",
+                turn_id=turn_id,
+                attributes={"speaker": "agent", "integration": "livekit"},
+            )
 
     def _on_speech_created(self, event: Any) -> None:
         occurred = _occurred_at(_value(event, "created_at"))
@@ -522,16 +569,9 @@ class LiveKitObserver:
         elif "tts" in metric_type:
             stage = "tts"
         else:
-            self._emit(
-                "custom",
-                occurred_at=_occurred_at(data.get("timestamp") or _value(event, "created_at")),
-                status="ok",
-                attributes={
-                    "custom_name": "livekit.metric",
-                    "metric_type": metric_type,
-                    **data,
-                },
-            )
+            # VAD, turn-detector, and speaking-rate samples are high-frequency
+            # internals, not customer-observable events. Exporting each sample
+            # used to fill the queue before the terminal session event.
             return
         raw_metadata = data.get("metadata")
         metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
@@ -599,12 +639,9 @@ class LiveKitObserver:
 
     def _on_session_usage(self, event: Any) -> None:
         usage = _data(_value(event, "usage", event))
-        self._emit(
-            "custom",
-            occurred_at=_occurred_at(_value(event, "created_at")),
-            status="ok",
-            attributes={"custom_name": "livekit.session_usage", "usage": usage},
-        )
+        # LiveKit emits this whenever a live counter changes. The final state
+        # is valuable; hundreds of intermediate duplicates are not.
+        self._latest_session_usage = usage
 
     def _on_tool_update(self, event: Any) -> None:
         update = _value(event, "update", event)
@@ -846,6 +883,17 @@ class LiveKitObserver:
             error=error_payload,
             attributes={"semantic_agent": self.agent_name, "close_reason": close_reason},
         )
+        if self._latest_session_usage is not None:
+            self._emit(
+                "custom",
+                occurred_at=occurred,
+                status="ok",
+                attributes={
+                    "custom_name": "livekit.session_usage",
+                    "usage": self._latest_session_usage,
+                    "final": True,
+                },
+            )
         if self.owns_session:
             if error_payload is not None:
                 self._emit(
@@ -855,14 +903,20 @@ class LiveKitObserver:
                     error=error_payload,
                     attributes={"close_reason": close_reason},
                 )
-            self._emit(
+            terminal_event = self._emit(
                 "session.ended",
                 occurred_at=occurred,
                 status=status,
                 error=error_payload,
                 attributes={"close_reason": close_reason},
             )
-            self.session.client.flush(timeout=self.session.client.session_flush_timeout)
+            # The event is already in the asynchronous exporter queue.  Do not
+            # make an HTTP request from LiveKit's ``close`` callback: that runs
+            # on the audio/session loop and was blocking calls for up to 15 s
+            # when the database was busy. ``observe`` registers a documented
+            # JobContext shutdown callback to drain this queue after LiveKit has
+            # finalized the session.
+            del terminal_event
         off = _value(self.agent_session, "off")
         if callable(off):
             for name, callback in self._listeners:
@@ -898,6 +952,7 @@ def observe(
     if recording is not None:
         combined_metadata["recording"] = recording
     owns_session = session is None
+    owns_client = session is None and client is None
     if session is None:
         voice_client = client or VokerVoice()
         session = voice_client.session(
@@ -907,10 +962,24 @@ def observe(
             version=version,
             metadata=combined_metadata,
         )
-    return LiveKitObserver(
+    observer = LiveKitObserver(
         agent_session,
         session,
         owns_session=owns_session,
+        owns_client=owns_client,
         agent=agent if owns_session else session.root_agent,
         version=version if owns_session else session.version,
     )
+    add_shutdown_callback = _value(context, "add_shutdown_callback")
+    if owns_session and callable(add_shutdown_callback):
+
+        async def drain_voker_telemetry(_: str = "") -> None:
+            # LiveKit runs shutdown callbacks after the voice pipeline is
+            # finalized. Draining here preserves the terminal event without
+            # blocking real-time audio or the AgentSession close handler.
+            await observer.session.client.aflush(timeout=8.0)
+            if observer.owns_client:
+                await observer.session.client.aclose()
+
+        add_shutdown_callback(drain_voker_telemetry)
+    return observer

@@ -378,11 +378,12 @@ export function SetupPage() {
   const selectedProject =
     projectItems.find((item) => item.slug === projectChoice)?.slug ??
     projectItems[0]?.slug ??
-    projectChoice;
+    "";
   const setup = useQuery({
     queryKey: ["project-setup", selectedProject],
     queryFn: () =>
       request<ProjectSetup>(`/api/projects/${selectedProject}/setup`),
+    enabled: Boolean(selectedProject),
   });
   const [environmentChoice, setEnvironmentChoice] = useState("development");
   const environmentItems = setup.data?.environments ?? [];

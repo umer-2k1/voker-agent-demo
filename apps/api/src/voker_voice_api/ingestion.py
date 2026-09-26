@@ -30,6 +30,7 @@ from voker_voice_api.models import (
 )
 from voker_voice_api.recordings import recording_expiry, validate_recording_metadata
 from voker_voice_api.schemas import BatchItemResult, CanonicalEvent, EventBatchResponse
+from voker_voice_api.session_logs import write_session_log
 
 TERMINAL_STATUSES = {"ok", "error", "cancelled", "timeout"}
 TERMINAL_SUFFIXES = (
@@ -185,6 +186,11 @@ def enqueue_completion_analysis(db: Session, project_id: uuid.UUID, session_id: 
                         "trigger": "session_completion",
                     },
                 )
+            )
+            write_session_log(
+                str(session_id),
+                "analysis_job_enqueued",
+                {"job_type": job_type, "analysis_run_id": str(analysis_run.id)},
             )
 
 
@@ -428,6 +434,17 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
         )
     )
     if duplicate:
+        # Resolve the existing session so a retry is visible in the same session log.
+        existing = db.scalar(
+            select(Event).where(Event.project_id == context.project_id, Event.event_id == event.event_id)
+        )
+        if existing is not None:
+            write_session_log(
+                str(existing.session_id),
+                "event_duplicate",
+                {"event_id": event.event_id, "event_type": event.event_type},
+                external_session_id=event.external_session_id,
+            )
         return "duplicate"
 
     session = session_for_event(db, context, event)
@@ -452,6 +469,18 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
     )
     db.add(persisted_event)
     db.flush()
+    write_session_log(
+        str(session.id),
+        "event_persisted",
+        {
+            "event": payload,
+            "event_db_id": str(persisted_event.id),
+            "turn_id": str(turn.id) if turn else None,
+            "span_id": str(span.id) if span else None,
+            "agent_run_id": str(run.id) if run else None,
+        },
+        external_session_id=session.external_session_id,
+    )
 
     if event.error:
         db.add(
@@ -581,6 +610,18 @@ def persist_event(db: Session, context: IngestContext, event: CanonicalEvent) ->
             session.outcome_source = (
                 recorded_source if isinstance(recorded_source, str) else "explicit"
             )
+    elif event.event_type == "intent.detected":
+        intent = event.attributes.get("intent")
+        if isinstance(intent, str) and intent.strip():
+            metadata = dict(session.metadata_)
+            metadata["intent"] = intent.strip()
+            confidence = event.attributes.get("confidence")
+            if isinstance(confidence, (int, float)):
+                metadata["intent_confidence"] = round(float(confidence), 3)
+            source = event.attributes.get("source")
+            if isinstance(source, str):
+                metadata["intent_source"] = source
+            session.metadata_ = metadata
     return "accepted"
 
 
@@ -602,6 +643,14 @@ def ingest_batch(
             results.append(BatchItemResult(event_id=event.event_id, status=status))
         except Exception as error:  # A bad item must not discard an entire batch.
             rejected += 1
+            raw_session_id = raw_event.get("external_session_id")
+            if isinstance(raw_session_id, str) and raw_session_id:
+                write_session_log(
+                    raw_session_id,
+                    "event_rejected_before_persistence",
+                    {"event_id": event_id, "error": str(error), "raw_event": raw_event},
+                    external_session_id=raw_session_id,
+                )
             results.append(BatchItemResult(event_id=event_id, status="rejected", detail=str(error)))
     return EventBatchResponse(
         accepted=accepted, duplicate=duplicate, rejected=rejected, items=results

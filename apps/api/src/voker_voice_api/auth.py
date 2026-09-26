@@ -30,7 +30,12 @@ def authenticate_ingest_key(key: str, db: Session) -> IngestContext:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Expired Voker ingest key"
         )
-    api_key.last_used_at = now
+    # The ingest path is deliberately read-only with respect to the key row.
+    # A voice session emits many concurrent batches using the same key. Touching
+    # ``last_used_at`` for every batch makes all of those requests contend for
+    # one Postgres row; a single lock timeout then rejects the rest of a call's
+    # trace. Last-used reporting is useful account metadata, but it must never
+    # sit on the telemetry durability path.
     return IngestContext(api_key=api_key)
 
 

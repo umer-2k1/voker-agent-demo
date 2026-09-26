@@ -52,7 +52,8 @@ evidence. The object must have exactly these fields and types:
 "findings":[]}
 Each finding, when evidence supports one, must contain: type, statement, severity
 (low|medium|high), confidence (0 through 1), certainty
-(inferred_contributing_factor|detected_condition), one or more supplied evidence IDs, and next_step.
+(inferred_contributing_factor|detected_condition), evidence as one or more objects in this
+exact shape: {"entity_type":"event|span|turn","entity_id":"a supplied ID"}, and next_step.
 Use uncertain/unknown rather than null for required enums. Never invent evidence IDs. Never claim
 causation; say associated with or observed signal. The session ID is context only and must never be
 cited as evidence; entity_type can only be event, span, or turn."""
@@ -93,7 +94,27 @@ def parse_semantic_result(content: str) -> SemanticResult:
     candidate = content.strip()
     if candidate.startswith("```") and candidate.endswith("```"):
         candidate = candidate.split("\n", maxsplit=1)[1].rsplit("\n", maxsplit=1)[0]
-    return SemanticResult.model_validate_json(candidate)
+    payload = json.loads(candidate)
+    # Some JSON-mode providers return Voker's unambiguous canonical IDs directly
+    # despite the requested EvidenceReference shape.  Normalize only those known
+    # prefixes; all other values still fail strict schema/evidence validation.
+    if isinstance(payload, dict):
+        for finding in payload.get("findings", []):
+            if isinstance(finding, dict):
+                evidence = finding.get("evidence")
+                if isinstance(evidence, list):
+                    finding["evidence"] = [_normalize_evidence_reference(item) for item in evidence]
+    return SemanticResult.model_validate(payload)
+
+
+def _normalize_evidence_reference(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    prefixes = (("evt_", "event"), ("span_", "span"), ("turn_", "turn"))
+    for prefix, entity_type in prefixes:
+        if value.startswith(prefix):
+            return {"entity_type": entity_type, "entity_id": value}
+    return value
 
 
 def _next_analysis_version(db: Session, session_id: uuid.UUID) -> int:

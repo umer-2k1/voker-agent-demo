@@ -17,3 +17,5 @@ coverage/
 .env.local
 *.egg-info/
 artifacts/dashboard-snapshots/
+/logs/sessions/*.jsonl
+/logs/sessions/*.sdk.jsonl

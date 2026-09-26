@@ -392,8 +392,30 @@ function TracePanelContent({
     corrections: 0,
     abandonment: 0,
   };
-  const sessionDurationSeconds = Math.max(
-    (trace.session.duration_ms ?? 1) / 1000,
+  const collection = trace.collection ?? {
+    last_event_type: trace.events.at(-1)?.event_type ?? null,
+    last_event_at: trace.events.at(-1)?.occurred_at ?? null,
+    last_received_at: null,
+    terminal_event_received: ["completed", "failed", "cancelled", "incomplete"].includes(
+      trace.session.status,
+    ),
+    diagnostic_log: `logs/sessions/${trace.session.id}.jsonl`,
+  };
+  const timelineDurationSeconds = Math.max(
+    (trace.session.duration_ms ?? 0) / 1000,
+    ...trace.turns.map((turn) => {
+      const end = turn.ended_at ?? turn.started_at;
+      return Math.max(
+        1,
+        (new Date(end).getTime() - new Date(trace.session.started_at).getTime()) / 1000,
+      );
+    }),
+    ...trace.events.map((event) =>
+      Math.max(
+        1,
+        (new Date(event.occurred_at).getTime() - new Date(trace.session.started_at).getTime()) / 1000,
+      ),
+    ),
     1,
   );
   const observedTurnGaps = trace.turns.slice(0, -1).flatMap((turn, index) => {
@@ -460,8 +482,14 @@ function TracePanelContent({
     <Card className="panel trace-panel" id="trace">
       <CardHeader className="panel-heading">
         <div className="min-w-0">
-          <p className="eyebrow">Session detail</p>
           <h2 className="truncate">{trace.session.external_session_id}</h2>
+          <p className="session-subtitle">
+            {trace.session.status === "incomplete"
+              ? "Collection ended without a terminal event"
+              : trace.session.status === "in_progress"
+                ? "Receiving trace events"
+                : "Trace collection complete"}
+          </p>
         </div>
         <Button
           variant="outline"
@@ -510,6 +538,30 @@ function TracePanelContent({
       </dl>
 
       <section
+        className={`collection-health ${trace.session.status === "incomplete" ? "attention" : ""}`}
+        aria-label="Trace collection health"
+      >
+        <div>
+          <b>
+            {trace.session.status === "incomplete"
+              ? "Trace collection stopped before the session closed"
+              : collection.terminal_event_received
+                ? "Trace collection finalized"
+                : "Trace collection is active"}
+          </b>
+          <span>
+            {collection.last_event_type
+              ? `Last event: ${collection.last_event_type}`
+              : "No events received yet"}
+            {collection.last_event_at
+              ? ` · ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" }).format(new Date(collection.last_event_at))}`
+              : ""}
+          </span>
+        </div>
+        <code title="Session diagnostic log path">{collection.diagnostic_log}</code>
+      </section>
+
+      <section
         className="conversation-timeline"
         aria-labelledby="conversation-timeline-heading"
       >
@@ -547,18 +599,21 @@ function TracePanelContent({
                     1000,
                 )
               : start + 3;
-              const total = Math.max(sessionDurationSeconds, end);
             return (
               <button
                 key={turn.id}
                 className={`timeline-segment ${turn.speaker === "customer" ? "customer" : "agent"}`}
                 style={{
-                  left: `${(start / total) * 100}%`,
-                  width: `${Math.max(1.5, ((end - start) / total) * 100)}%`,
+                  left: `${Math.min(99, (start / timelineDurationSeconds) * 100)}%`,
+                  width: `${Math.max(1.5, ((end - start) / timelineDurationSeconds) * 100)}%`,
                 }}
                 title={`${turn.speaker} at ${formatClock(start)}`}
                 aria-label={`Open ${turn.speaker} turn at ${formatClock(start)}`}
-                onClick={() => seekToTurn(turn)}
+                onClick={() =>
+                  activeRecording
+                    ? seekToTurn(turn)
+                    : revealEvidence({ event_id: null, span_id: null, turn_id: turn.id })
+                }
               />
             );
           })}
@@ -570,7 +625,7 @@ function TracePanelContent({
                 event.event_type === "voice.dead-air",
             )
             .map((event) => {
-              const total = sessionDurationSeconds;
+              const total = timelineDurationSeconds;
               const start = Math.max(
                 0,
                 (new Date(event.occurred_at).getTime() -
@@ -609,8 +664,8 @@ function TracePanelContent({
               key={gap.key}
               onClick={() => seekToOffset(gap.start, "observed dead air")}
               style={{
-                left: `${Math.min(99, (gap.start / sessionDurationSeconds) * 100)}%`,
-                width: `${Math.max(1.2, ((gap.end - gap.start) / sessionDurationSeconds) * 100)}%`,
+                left: `${Math.min(99, (gap.start / timelineDurationSeconds) * 100)}%`,
+                width: `${Math.max(1.2, ((gap.end - gap.start) / timelineDurationSeconds) * 100)}%`,
               }}
               title={`Observed dead air at ${formatClock(gap.start)}`}
             />
@@ -618,8 +673,8 @@ function TracePanelContent({
         </div>
         <div className="conversation-timeline-scale" aria-hidden="true">
           <span>0:00</span>
-          <span>{formatClock((trace.session.duration_ms ?? 0) / 2000)}</span>
-          <span>{formatClock((trace.session.duration_ms ?? 0) / 1000)}</span>
+          <span>{formatClock(timelineDurationSeconds / 2)}</span>
+          <span>{formatClock(timelineDurationSeconds)}</span>
         </div>
         <p className="sr-only" aria-live="polite">
           {shareCopied ? "Session link copied to clipboard." : ""}
@@ -703,10 +758,13 @@ function TracePanelContent({
                   <Button
                     variant="ghost"
                     className={`transcript-turn ${active ? "playing" : ""}`}
-                    disabled={!activeRecording}
                     id={`turn-${turn.id}`}
                     key={turn.id}
-                    onClick={() => seekToTurn(turn)}
+                    onClick={() =>
+                      activeRecording
+                        ? seekToTurn(turn)
+                        : revealEvidence({ event_id: null, span_id: null, turn_id: turn.id })
+                    }
                   >
                     <b>
                       {turn.speaker} · {formatLatency(offset * 1000)}

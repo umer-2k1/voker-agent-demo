@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound } from "lucide-react";
+import { KeyRound, Plus } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -44,14 +44,32 @@ function initials(account: Account) {
     .toUpperCase();
 }
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    credentials: "include",
-    ...init,
-  });
-  if (!response.ok)
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 8_000);
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      credentials: "include",
+      signal: controller.signal,
+      ...init,
+    });
+  } catch (error) {
+    if (controller.signal.aborted)
+      throw new Error("The API did not respond. Please try again.");
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as {
+      detail?: string;
+    } | null;
     throw new Error(
-      response.status === 401 ? "Sign in required" : "Request failed",
+      response.status === 401
+        ? "Sign in required"
+        : (body?.detail ?? "Request failed"),
     );
+  }
   return response.json() as Promise<T>;
 }
 
@@ -94,7 +112,7 @@ export function SettingsPage({ account }: { account: Account }) {
     queryKey: ["api-keys", projectSlug],
     queryFn: () =>
       request<{ items: ApiKey[] }>(`/api/projects/${projectSlug}/api-keys`),
-    enabled: Boolean(projectSlug),
+    enabled: Boolean(projectSlug && environment),
   });
   const createKey = useMutation({
     mutationFn: (label: string) =>
@@ -198,7 +216,16 @@ export function SettingsPage({ account }: { account: Account }) {
             </span>
           </div>
           {projects.isPending || (projectSlug && setup.isPending) ? (
-            <div className="mt-6 h-16 animate-pulse rounded-xl bg-[#edf5f3]" />
+            <div
+              className="mt-6 flex items-center gap-3 rounded-xl bg-[#f4f8f7] px-4 py-4 text-sm text-[#526b67]"
+              aria-live="polite"
+            >
+              <span
+                className="h-4 w-4 animate-spin rounded-full border-2 border-[#9ccfc5] border-t-[#176258]"
+                aria-hidden="true"
+              />
+              Preparing your workspace and key controls…
+            </div>
           ) : null}
           {projects.isError || setup.isError ? (
             <div className="mt-6 flex flex-col gap-3 rounded-xl border border-[#dce8e5] bg-[#f7faf9] p-4 text-sm text-[#526b67] sm:flex-row sm:items-center sm:justify-between">
@@ -213,6 +240,24 @@ export function SettingsPage({ account }: { account: Account }) {
                 }}
                 type="button"
                 variant="outline"
+              >
+                Try again
+              </Button>
+            </div>
+          ) : null}
+          {projects.isSuccess && !projectItems.length ? (
+            <div
+              className="mt-6 flex flex-col gap-3 rounded-xl border border-[#efc2bb] bg-[#fff4f2] p-4 text-sm text-[#7b2d22] sm:flex-row sm:items-center sm:justify-between"
+              role="alert"
+            >
+              <span>
+                We couldn’t prepare your workspace. Try again to continue to
+                API-key creation.
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void projects.refetch()}
               >
                 Try again
               </Button>
@@ -294,7 +339,7 @@ export function SettingsPage({ account }: { account: Account }) {
           {projectSlug && environment ? (
             <Form {...form}>
               <form
-                className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-end"
+                className="mt-7 flex flex-col gap-3 rounded-xl bg-[#f4f8f7] p-4 sm:flex-row sm:items-end"
                 onSubmit={form.handleSubmit((values) =>
                   createKey.mutate(values.label),
                 )}
@@ -304,7 +349,9 @@ export function SettingsPage({ account }: { account: Account }) {
                   name="label"
                   render={({ field }) => (
                     <FormItem className="flex-1">
-                      <FormLabel>Key label for {environment}</FormLabel>
+                      <FormLabel>
+                        Create your first API key for {environment}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           placeholder="e.g. Production voice agent"
@@ -319,6 +366,7 @@ export function SettingsPage({ account }: { account: Account }) {
                   type="submit"
                   disabled={createKey.isPending || !environment || !projectSlug}
                 >
+                  {!createKey.isPending ? <Plus aria-hidden="true" /> : null}
                   {createKey.isPending ? "Creating…" : "Create key"}
                 </Button>
               </form>
@@ -332,15 +380,18 @@ export function SettingsPage({ account }: { account: Account }) {
               Could not create the key for this project and environment.
             </p>
           ) : null}
-          {keys.isPending ? (
-            <div className="mt-5 space-y-2">
-              <div className="h-15 animate-pulse rounded-lg bg-[#eaf5f3]" />
-              <div className="h-15 animate-pulse rounded-lg bg-[#eaf5f3]" />
-            </div>
+          {keys.isPending && environment ? (
+            <p className="mt-5 text-sm text-[#526b67]" aria-live="polite">
+              Checking existing API keys…
+            </p>
           ) : null}
           {keys.isError && projectSlug ? (
             <div className="mt-5 flex flex-col gap-3 rounded-lg border border-[#dce8e5] bg-[#f7faf9] p-4 text-sm text-[#526b67] sm:flex-row sm:items-center sm:justify-between">
-              <span>API keys could not be loaded right now.</span>
+              <span>
+                {keys.error instanceof Error
+                  ? keys.error.message
+                  : "API keys could not be loaded right now."}
+              </span>
               <Button
                 type="button"
                 variant="outline"
@@ -427,9 +478,12 @@ export function SettingsPage({ account }: { account: Account }) {
               ))
             ) : keys.isSuccess ? (
               <div className="grid gap-1 px-6 py-9 text-center text-sm text-[#526b67]">
-                <b className="text-[#254841]">No API keys yet</b>
+                <b className="text-[#254841]">
+                  You haven’t created an API key yet
+                </b>
                 <span>
-                  Create a key above when you are ready to connect an agent.
+                  Give it a clear label above, then copy it once into your
+                  agent’s environment.
                 </span>
               </div>
             ) : null}

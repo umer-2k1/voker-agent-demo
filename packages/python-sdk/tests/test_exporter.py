@@ -50,6 +50,51 @@ def test_exporter_fails_open_when_endpoint_is_unavailable() -> None:
         exporter.close()
 
 
+def test_exporter_close_drains_terminal_events() -> None:
+    received: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        received.append(request)
+        return httpx.Response(200)
+
+    exporter = BackgroundExporter(
+        endpoint="https://ingest.example",
+        api_key="test-key",
+        flush_interval_seconds=0.01,
+        transport=httpx.MockTransport(handler),
+    )
+    exporter.emit({"event_id": "evt_terminal", "event_type": "session.ended"})
+    exporter.close()
+    exporter._thread.join(timeout=1)
+
+    assert exporter._thread.daemon is True
+    assert not exporter._thread.is_alive()
+    payload = json.loads(gzip.decompress(received[0].content))
+    assert payload["events"][0]["event_type"] == "session.ended"
+
+
+def test_exporter_keeps_running_when_a_provider_value_is_not_json_serializable() -> None:
+    received: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        received.append(request)
+        return httpx.Response(200)
+
+    exporter = BackgroundExporter(
+        endpoint="https://ingest.example",
+        api_key="test-key",
+        flush_interval_seconds=0.01,
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        exporter.emit({"event_id": "evt_1", "value": object()})
+        assert exporter.flush(timeout=1)
+        assert len(received) == 1
+        assert exporter.failed_batches == 0
+    finally:
+        exporter.close()
+
+
 def test_exporter_drops_events_when_bounded_queue_is_full() -> None:
     exporter = object.__new__(BackgroundExporter)
     exporter._closed = False

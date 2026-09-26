@@ -33,9 +33,10 @@ import { SettingsPage } from "@/pages/SettingsPage";
 import { SetupPage } from "@/pages/SetupPage";
 import { IntentsPage } from "@/pages/IntentsPage";
 import { AgentsPage } from "@/pages/AgentsPage";
+import { loadProjects, resolveProjectSlug } from "@/lib/projects";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
-const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
+const preferredProjectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
 const emptyPage: SessionPage = { offset: 0, limit: 30, total: 0 };
 
 async function dashboardRequest<T>(
@@ -100,17 +101,26 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
   const [eventOffset, setEventOffset] = useState(() =>
     Number(searchParams.get("event_offset") ?? 0),
   );
+  const projectsQuery = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => loadProjects(apiBaseUrl),
+  });
+  const projectSlug = resolveProjectSlug(
+    projectsQuery.data?.items ?? [],
+    preferredProjectSlug,
+  );
   const selectedSessionId = routeSessionId;
   const overviewQuery = useQuery({
     queryKey: ["overview", projectSlug],
     queryFn: () =>
       dashboardRequest<Overview>(`/api/projects/${projectSlug}/overview`),
+    enabled: Boolean(projectSlug),
   });
   const setupQuery = useQuery({
     queryKey: ["project-setup", projectSlug],
     queryFn: () =>
       dashboardRequest<ProjectSetup>(`/api/projects/${projectSlug}/setup`),
-    enabled: !sessionsOnly,
+    enabled: !sessionsOnly && Boolean(projectSlug),
   });
   const analyticsQuery = useQuery({
     queryKey: [
@@ -135,6 +145,7 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
       );
     },
     placeholderData: (previousData) => previousData,
+    enabled: Boolean(projectSlug),
   });
   const sessionsQuery = useQuery({
     queryKey: [
@@ -180,6 +191,7 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
         `/api/projects/${projectSlug}/sessions?${query}`,
       );
     },
+    enabled: Boolean(projectSlug),
   });
   const traceQuery = useQuery({
     queryKey: [
@@ -219,6 +231,7 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
   const liveSessionId = trace?.session.id;
   const liveSessionStatus = trace?.session.status;
   const dashboardError =
+    projectsQuery.error ??
     overviewQuery.error ??
     analyticsQuery.error ??
     sessionsQuery.error ??
@@ -317,7 +330,13 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
             )}
           </div>
         ) : null}
-        {!sessionsOnly ? (
+        {!projectSlug && !projectsQuery.isPending && !dashboardError ? (
+          <div className="connection-error" role="alert">
+            No project is available for this account yet. Please contact a
+            workspace administrator.
+          </div>
+        ) : null}
+        {!sessionsOnly && projectSlug ? (
           <OverviewPanel
             overview={overview}
             analytics={analytics}
@@ -351,7 +370,7 @@ function DashboardPage({ sessionsOnly = false }: { sessionsOnly?: boolean }) {
             }}
           />
         ) : null}
-        {sessionsOnly ? (
+        {sessionsOnly && projectSlug ? (
           <section className="sessions-workspace">
             {activeSessionId ? (
               <>

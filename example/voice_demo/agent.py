@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -35,6 +36,29 @@ class DemoCallState:
     customer_name: str | None = None
     appointment_id: str | None = None
     notes: list[str] = field(default_factory=list)
+    voker_session: Any | None = None
+
+
+def _record_intent(context: RunContext[DemoCallState], intent: str) -> None:
+    """Attach the routed caller intent to the observed Voker session."""
+
+    observed_session = context.userdata.voker_session
+    if observed_session is not None:
+        observed_session.emit(
+            "intent.detected",
+            status="ok",
+            attributes={"intent": intent, "confidence": 0.99, "source": "route_tool"},
+        )
+
+
+def _record_outcome(context: RunContext[DemoCallState], outcome: str) -> None:
+    observed_session = context.userdata.voker_session
+    if observed_session is not None:
+        observed_session.emit(
+            "outcome.recorded",
+            status="ok",
+            attributes={"outcome": outcome, "source": "tool_result"},
+        )
 
 
 def _required(name: str) -> str:
@@ -68,7 +92,8 @@ class SchedulingAgent(Agent):
     @function_tool()
     async def check_slot(self, context: RunContext[DemoCallState], day: str, time: str) -> str:
         """Check whether an appointment slot is available."""
-        if day.lower() in {"monday", "friday"} and time.startswith("09"):
+        normalized_time = time.lower().replace(" ", "")
+        if day.lower() in {"monday", "friday"} and normalized_time.startswith(("9:", "09:")):
             raise RuntimeError("calendar provider timeout: planned observability demo failure")
         return f"{day} at {time} is available."
 
@@ -78,6 +103,7 @@ class SchedulingAgent(Agent):
         state = context.userdata
         state.appointment_id = state.appointment_id or "APT-1042"
         state.notes.append(f"Rescheduled to {day} {time}")
+        _record_outcome(context, "resolved")
         return f"Appointment {state.appointment_id} was moved to {day} at {time}."
 
 
@@ -96,8 +122,10 @@ class BillingAgent(Agent):
     async def issue_refund(self, context: RunContext[DemoCallState], amount: float) -> str:
         """Issue a demonstration refund. Refunds above 25 intentionally fail."""
         if amount > 25:
+            _record_outcome(context, "escalated")
             raise PermissionError("refund policy requires supervisor approval above $25")
         context.userdata.notes.append(f"Refunded ${amount:.2f}")
+        _record_outcome(context, "resolved")
         return f"Refund of ${amount:.2f} was issued."
 
 
@@ -117,6 +145,7 @@ class SupportAgent(Agent):
         """Create a support ticket for an unresolved customer issue."""
         ticket_id = f"SUP-{len(context.userdata.notes) + 100}"
         context.userdata.notes.append(f"{ticket_id}: {summary}")
+        _record_outcome(context, "escalated")
         return f"Created support ticket {ticket_id}."
 
 
@@ -140,16 +169,19 @@ class IntakeAgent(Agent):
     @function_tool()
     async def transfer_to_scheduling(self, context: RunContext[DemoCallState]) -> tuple[Agent, str]:
         """Transfer appointment booking, cancellation, or rescheduling requests."""
+        _record_intent(context, "appointment_management")
         return SchedulingAgent(), "I am transferring you to our scheduling specialist."
 
     @function_tool()
     async def transfer_to_billing(self, context: RunContext[DemoCallState]) -> tuple[Agent, str]:
         """Transfer invoice, charge, and refund requests."""
+        _record_intent(context, "billing_or_refund")
         return BillingAgent(), "I am transferring you to our billing specialist."
 
     @function_tool()
     async def transfer_to_support(self, context: RunContext[DemoCallState]) -> tuple[Agent, str]:
         """Transfer login, product, access, and service-outage requests."""
+        _record_intent(context, "technical_support")
         return SupportAgent(), "I am transferring you to technical support."
 
 
@@ -183,13 +215,14 @@ async def entrypoint(context: JobContext) -> None:
     )
 
     # One call attaches Voker Voice. It exports asynchronously and never blocks the agent.
-    observe(
+    observer = observe(
         session,
         context=context,
         agent="voker-voice-demo",
         version=os.getenv("VOICE_DEMO_VERSION", "demo-1"),
         metadata={"demo": "multi-agent-livekit", "runtime_llm": "deepseek"},
     )
+    session.userdata.voker_session = observer.session
     await session.start(agent=IntakeAgent(), room=context.room)
 
 

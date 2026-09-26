@@ -1424,6 +1424,22 @@ def get_session_trace(
         db.scalar(select(func.count()).select_from(Event).where(Event.session_id == session.id))
         or 0
     )
+    latest_event = db.scalar(
+        select(Event)
+        .where(Event.session_id == session.id)
+        .order_by(Event.received_at.desc(), Event.id.desc())
+        .limit(1)
+    )
+    terminal_event_received = bool(
+        db.scalar(
+            select(Event.id)
+            .where(
+                Event.session_id == session.id,
+                Event.event_type.in_(("session.ended", "session.error")),
+            )
+            .limit(1)
+        )
+    )
     behavior_types = {
         "interruptions": ("voice.interruption",),
         "talk_over": ("voice.talk_over",),
@@ -1545,6 +1561,13 @@ def get_session_trace(
 
     return {
         "session": session_summary(session, len(errors), event_total),
+        "collection": {
+            "last_event_type": latest_event.event_type if latest_event else None,
+            "last_event_at": timestamp(latest_event.occurred_at) if latest_event else None,
+            "last_received_at": timestamp(latest_event.received_at) if latest_event else None,
+            "terminal_event_received": terminal_event_received,
+            "diagnostic_log": f"logs/sessions/{session.id}.jsonl",
+        },
         "event_page": {"offset": event_offset, "limit": event_limit, "total": event_total},
         "voice_behavior": voice_behavior,
         "events": [

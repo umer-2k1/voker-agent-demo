@@ -1,15 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, RadioTower } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import type { Analytics } from "@/components/dashboard/types";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { loadProjects, resolveProjectSlug } from "@/lib/projects";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
-const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
+const preferredProjectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
 
-async function loadAnalytics() {
+async function loadAnalytics(projectSlug: string) {
   const response = await fetch(
     `${apiBaseUrl}/api/projects/${projectSlug}/analytics/overview`,
     { credentials: "include" },
@@ -21,9 +22,18 @@ async function loadAnalytics() {
 export function AgentsPage() {
   const { agent: encodedAgent } = useParams();
   const selectedName = encodedAgent ? decodeURIComponent(encodedAgent) : null;
+  const projectsQuery = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => loadProjects(apiBaseUrl),
+  });
+  const projectSlug = resolveProjectSlug(
+    projectsQuery.data?.items ?? [],
+    preferredProjectSlug,
+  );
   const query = useQuery({
     queryKey: ["analytics", projectSlug],
-    queryFn: loadAnalytics,
+    queryFn: () => loadAnalytics(projectSlug),
+    enabled: Boolean(projectSlug),
   });
   const agents = query.data?.comparisons.agents ?? [];
   const selected = selectedName
@@ -65,7 +75,7 @@ export function AgentsPage() {
             </p>
           </Card>
         )
-      ) : (
+      ) : agents.length ? (
         <section className="agent-grid" aria-label="Agent performance list">
           {agents.map((item) => (
             <Card className="agent-summary" key={item.label}>
@@ -86,7 +96,21 @@ export function AgentsPage() {
             </Card>
           ))}
         </section>
-      )}
+      ) : !query.isPending && !query.isError ? (
+        <Card className="first-observation-state">
+          <RadioTower aria-hidden="true" />
+          <div>
+            <h2>No agents observed yet</h2>
+            <p>
+              This is expected for a new workspace. Connect your agent, then
+              make its first call to start building performance evidence.
+            </p>
+            <Link to="/setup">
+              Set up an agent <ExternalLink size={14} />
+            </Link>
+          </div>
+        </Card>
+      ) : null}
     </main>
   );
 }

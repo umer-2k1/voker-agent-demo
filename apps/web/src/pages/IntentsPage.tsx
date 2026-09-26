@@ -1,15 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, RadioTower } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import type { Analytics } from "@/components/dashboard/types";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { loadProjects, resolveProjectSlug } from "@/lib/projects";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
-const projectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
+const preferredProjectSlug = import.meta.env.VITE_PROJECT_SLUG ?? "voker-voice";
 
-async function loadAnalytics() {
+async function loadAnalytics(projectSlug: string) {
   const response = await fetch(
     `${apiBaseUrl}/api/projects/${projectSlug}/analytics/overview`,
     { credentials: "include" },
@@ -21,9 +22,18 @@ async function loadAnalytics() {
 export function IntentsPage() {
   const { intent: encodedIntent } = useParams();
   const selectedName = encodedIntent ? decodeURIComponent(encodedIntent) : null;
+  const projectsQuery = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => loadProjects(apiBaseUrl),
+  });
+  const projectSlug = resolveProjectSlug(
+    projectsQuery.data?.items ?? [],
+    preferredProjectSlug,
+  );
   const query = useQuery({
     queryKey: ["analytics", projectSlug],
-    queryFn: loadAnalytics,
+    queryFn: () => loadAnalytics(projectSlug),
+    enabled: Boolean(projectSlug),
   });
   const intents = query.data?.intent_comparisons ?? [];
   const selected = selectedName
@@ -66,7 +76,7 @@ export function IntentsPage() {
             </p>
           </Card>
         )
-      ) : (
+      ) : intents.length ? (
         <section
           className="evidence-table"
           aria-label="Intent performance list"
@@ -101,7 +111,21 @@ export function IntentsPage() {
             </div>
           ))}
         </section>
-      )}
+      ) : !query.isPending && !query.isError ? (
+        <Card className="first-observation-state">
+          <RadioTower aria-hidden="true" />
+          <div>
+            <h2>No intents observed yet</h2>
+            <p>
+              This is expected for a new workspace. Intents appear once Voker
+              receives calls with observable conversation context.
+            </p>
+            <Link to="/setup">
+              Set up an agent <ExternalLink size={14} />
+            </Link>
+          </div>
+        </Card>
+      ) : null}
     </main>
   );
 }

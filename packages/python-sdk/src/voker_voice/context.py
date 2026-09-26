@@ -103,7 +103,7 @@ class VoiceSession:
         agent_name: str | None = None,
         agent_version: str | None = None,
         duration_ms: float | None = None,
-    ) -> None:
+    ) -> dict[str, Any]:
         self._sequence += 1
         effective_agent = agent_name or _active_agent_name.get() or self.root_agent
         effective_version = agent_version or _active_agent_version.get() or self.version
@@ -156,7 +156,7 @@ class VoiceSession:
             event["usage"] = self.client._sanitize(usage)
         if duration_ms is not None:
             event["duration_ms"] = duration_ms
-        self.client._emit(event)
+        return self.client._emit(event)
 
     def span(
         self,

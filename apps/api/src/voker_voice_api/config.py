@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     session_secret: str | None = None
     credential_encryption_key: str | None = None
     recording_retention_days: int = 30
+    session_log_dir: Path = REPOSITORY_ROOT / "logs" / "sessions"
+    session_stale_after_seconds: int = 300
     # Keep the dashboard host aligned with the local API host.  `localhost`
     # and `127.0.0.1` are distinct browser sites, so mixing them prevents the
     # browser from sending the signed session cookie to `/auth/me`.

@@ -1,3 +1,5 @@
+import gzip
+import json
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
@@ -7,6 +9,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from voker_voice_api.database import Base, get_db
+from voker_voice_api.auth import authenticate_ingest_key
+from voker_voice_api.ingestion import IngestContext
 from voker_voice_api.ingestion import ingest_batch, sse_payload
 from voker_voice_api.main import app
 from voker_voice_api.models import (
@@ -56,6 +60,93 @@ def test_sse_payload_includes_trace_identity() -> None:
 
     assert "evt-valid" in payload
     assert "llm.completed" in payload
+
+
+def test_event_batch_accepts_the_voker_api_key_header() -> None:
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    organization = Organization(name="Batch Header")
+    db.add(organization)
+    db.flush()
+    project = Project(organization_id=organization.id, name="Voice", slug="batch-header")
+    db.add(project)
+    db.flush()
+    environment = Environment(
+        project_id=project.id,
+        name="Development",
+        slug="development",
+        kind="development",
+    )
+    db.add(environment)
+    db.flush()
+    generated = generate_ingest_key("test")
+    db.add(
+        APIKey(
+            project_id=project.id,
+            environment_id=environment.id,
+            label="SDK exporter",
+            prefix=generated.prefix,
+            secret_hash=generated.secret_hash,
+        )
+    )
+    db.commit()
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        payload = {"schema_version": "1.0", "events": [raw_event()]}
+        response = TestClient(app).post(
+            "/v1/events/batch",
+            content=gzip.compress(json.dumps(payload).encode()),
+            headers={
+                "Content-Encoding": "gzip",
+                "Content-Type": "application/json",
+                "X-Voker-Api-Key": generated.raw,
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] == 1
+    db.close()
+
+
+def test_ingest_authentication_does_not_lock_the_api_key_row_per_batch() -> None:
+    """High-frequency telemetry must not mutate the shared API-key row."""
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    organization = Organization(name="No hot-row writes")
+    db.add(organization)
+    db.flush()
+    project = Project(organization_id=organization.id, name="Voice", slug="no-hot-row")
+    db.add(project)
+    db.flush()
+    environment = Environment(
+        project_id=project.id, name="Development", slug="development", kind="development"
+    )
+    db.add(environment)
+    db.flush()
+    generated = generate_ingest_key("test")
+    key = APIKey(
+        project_id=project.id,
+        environment_id=environment.id,
+        label="Telemetry",
+        prefix=generated.prefix,
+        secret_hash=generated.secret_hash,
+    )
+    db.add(key)
+    db.commit()
+
+    context = authenticate_ingest_key(generated.raw, db)
+
+    assert isinstance(context, IngestContext)
+    assert key.last_used_at is None
+    assert not db.is_modified(key)
+    db.close()
 
 
 def test_authenticated_session_routes_preserve_outcome_and_queue_completion_once() -> None:

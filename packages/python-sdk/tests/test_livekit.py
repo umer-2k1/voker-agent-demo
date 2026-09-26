@@ -63,6 +63,32 @@ def test_one_call_observer_owns_lifecycle_and_context_metadata() -> None:
     assert fake.handlers == {}
 
 
+def test_observer_does_not_close_a_caller_owned_client() -> None:
+    sink = MemoryEventSink()
+    client = VokerVoice(event_sink=sink, enabled=True)
+    fake = FakeAgentSession()
+    observer = observe_livekit(fake, client=client, session_id="call-1")
+
+    fake.emit("close", {"created_at": 100.0, "reason": "participant_disconnected"})
+
+    assert observer.owns_client is False
+    assert client._sink is sink
+
+
+def test_livekit_context_omits_async_room_metadata() -> None:
+    async def room_sid():
+        return "RM_ASYNC"
+
+    sink = MemoryEventSink()
+    client = VokerVoice(event_sink=sink, enabled=True)
+    fake = FakeAgentSession()
+    room = SimpleNamespace(name="support-room", sid=room_sid(), remote_participants={})
+
+    observe_livekit(fake, context=SimpleNamespace(room=room), client=client)
+
+    assert sink.events[0]["attributes"]["livekit_room_sid"] is None
+
+
 def test_livekit_maps_voice_pipeline_with_real_public_event_names() -> None:
     sink = MemoryEventSink()
     fake = FakeAgentSession()
@@ -274,6 +300,54 @@ def test_livekit_maps_voice_pipeline_with_real_public_event_names() -> None:
     assert len(run_ids) == 1
     for event in sink.events:
         CanonicalEvent.model_validate(event)
+
+
+def test_assistant_conversation_item_uses_a_distinct_agent_transcript_turn() -> None:
+    sink = MemoryEventSink()
+    fake = FakeAgentSession()
+    client = VokerVoice(event_sink=sink, enabled=True)
+    observe_livekit(fake, agent="voice-router", client=client, session_id="call-1")
+
+    fake.emit(
+        "user_state_changed",
+        {"old_state": "listening", "new_state": "speaking", "created_at": 100.0},
+    )
+    user_turn_id = next(event["turn_id"] for event in sink.events if event["event_type"] == "turn.started")
+    fake.emit(
+        "conversation_item_added",
+        {
+            "created_at": 101.0,
+            "item": {
+                "type": "message",
+                "id": "assistant-1",
+                "role": "assistant",
+                "content": ["Your appointment is booked."],
+            },
+        },
+    )
+
+    assistant_message = next(event for event in sink.events if event["event_type"] == "assistant.message")
+    assert assistant_message["turn_id"] != user_turn_id
+    assert assistant_message["attributes"]["speaker"] == "agent"
+    assert assistant_message["attributes"]["transcript"] == "Your appointment is booked."
+
+
+def test_livekit_context_drains_telemetry_after_close_not_inside_close_handler() -> None:
+    sink = MemoryEventSink()
+    client = VokerVoice(event_sink=sink, enabled=True)
+    fake = FakeAgentSession()
+    callbacks = []
+    context = SimpleNamespace(
+        room=SimpleNamespace(name="support-room", sid="RM_1", remote_participants={}),
+        add_shutdown_callback=callbacks.append,
+    )
+    observer = observe_livekit(fake, context=context, client=client)
+
+    fake.emit("close", {"created_at": 100.0, "reason": "participant_disconnected"})
+
+    assert len(callbacks) == 1
+    assert observer.owns_client is False
+    assert event_types(sink)[-1] == "session.ended"
 
 
 def test_false_interruption_is_not_reported_as_real_interruption() -> None:

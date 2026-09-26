@@ -165,6 +165,19 @@ def test_semantic_parser_accepts_fenced_json() -> None:
     assert result.findings[0].evidence[1].entity_type == "span"
 
 
+def test_semantic_parser_normalizes_unambiguous_bare_finding_ids() -> None:
+    payload = json.loads(semantic_json(event_id="evt_1", finding_event_id="evt_1"))
+    payload["findings"][0]["evidence"] = ["evt_1", "span_1", "turn_1"]
+
+    result = parse_semantic_result(json.dumps(payload))
+
+    assert [(item.entity_type, item.entity_id) for item in result.findings[0].evidence] == [
+        ("event", "evt_1"),
+        ("span", "span_1"),
+        ("turn", "turn_1"),
+    ]
+
+
 def test_evaluator_evidence_is_bounded_redacted_and_omits_raw_receipts() -> None:
     db, voice_session, _project = database()
     events = list(db.scalars(select(Event)))
@@ -191,6 +204,7 @@ def test_semantic_evaluator_persists_metrics_mixed_evidence_and_outcome(
 ) -> None:
     db, voice_session, _project = database()
     settings = get_settings()
+    monkeypatch.setattr(settings, "semantic_evaluator_provider", "openrouter")
     monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
     monkeypatch.setattr(settings, "openrouter_model", "test/model")
 

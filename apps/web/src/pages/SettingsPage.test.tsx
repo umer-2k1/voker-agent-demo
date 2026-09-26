@@ -61,9 +61,12 @@ test("creates an ingest key for the selected authorized project environment", as
 
   await screen.findByText("Support");
   await screen.findByText("Staging");
-  fireEvent.change(screen.getByLabelText("Key label for staging"), {
-    target: { value: "Staging agent" },
-  });
+  fireEvent.change(
+    screen.getByLabelText("Create your first API key for staging"),
+    {
+      target: { value: "Staging agent" },
+    },
+  );
   fireEvent.click(screen.getByRole("button", { name: "Create key" }));
 
   expect(await screen.findByText("vkr_test_once")).toBeVisible();

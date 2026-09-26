@@ -32,6 +32,12 @@ function dashboardFetch(url: string | URL | Request) {
         display_name: "Ops",
       }),
     );
+  if (path.endsWith("/api/projects"))
+    return Promise.resolve(
+      jsonResponse({
+        items: [{ id: "project-1", name: "Voice", slug: "voker-voice" }],
+      }),
+    );
   if (path.includes("/analytics/overview"))
     return Promise.resolve(
       jsonResponse({

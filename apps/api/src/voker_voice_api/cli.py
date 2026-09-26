@@ -1,8 +1,10 @@
 import argparse
+import uuid
 
 from voker_voice_api.bootstrap import create_ingest_key, ensure_development_seed, seed_demo_sessions
 from voker_voice_api.database import SessionLocal
-from voker_voice_api.worker import expire_recordings, run_once
+from voker_voice_api.session_logs import backfill_session_log
+from voker_voice_api.worker import expire_recordings, reconcile_stale_sessions, run_once
 
 
 def seed() -> None:
@@ -40,6 +42,14 @@ def main() -> None:
     worker_parser = subparsers.add_parser("worker-once", help="Process due durable analysis jobs")
     worker_parser.add_argument("--limit", type=int, default=10)
     subparsers.add_parser("expire-recordings", help="Revoke expired recording references")
+    reconcile_parser = subparsers.add_parser(
+        "reconcile-sessions", help="Mark stalled sessions incomplete and queue their analysis"
+    )
+    reconcile_parser.add_argument("--session-id", help="Limit reconciliation to one session UUID")
+    log_parser = subparsers.add_parser(
+        "export-session-log", help="Backfill a session diagnostic JSONL file from persisted evidence"
+    )
+    log_parser.add_argument("--session-id", required=True, help="Session UUID")
     args = parser.parse_args()
 
     if args.command == "seed":
@@ -53,6 +63,15 @@ def main() -> None:
     if args.command == "expire-recordings":
         with SessionLocal.begin() as db:
             print(f"Expired {expire_recordings(db)} recordings")
+    if args.command == "reconcile-sessions":
+        with SessionLocal.begin() as db:
+            print(
+                "Reconciled "
+                f"{reconcile_stale_sessions(db, session_id=uuid.UUID(args.session_id) if args.session_id else None)} stalled sessions"
+            )
+    if args.command == "export-session-log":
+        with SessionLocal.begin() as db:
+            print(f"Wrote {backfill_session_log(db, args.session_id)} historical events to session log")
 
 
 if __name__ == "__main__":

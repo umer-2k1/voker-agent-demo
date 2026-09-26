@@ -1,11 +1,15 @@
 import asyncio
 import atexit
+import gzip
 import json
 import logging
 import os
 from typing import Any
 
+import httpx
+
 from voker_voice.context import VoiceSession
+from voker_voice.diagnostics import SessionDiagnosticWriter
 from voker_voice.exporter import BackgroundExporter, EventSink
 from voker_voice.redaction import RedactionHook, redact
 
@@ -42,6 +46,7 @@ class VokerVoice:
         max_event_bytes: int = 128_000,
         session_flush_timeout: float = 0.25,
         diagnostics: bool = False,
+        session_log_dir: str | None = None,
         event_sink: EventSink | None = None,
     ) -> None:
         self.api_key = api_key or os.getenv("VOKER_API_KEY")
@@ -66,9 +71,18 @@ class VokerVoice:
         self.max_event_bytes = max_event_bytes
         self.session_flush_timeout = session_flush_timeout
         self.diagnostics = diagnostics
+        self._session_diagnostics = SessionDiagnosticWriter(
+            session_log_dir
+            if session_log_dir is not None
+            else os.getenv("VOKER_SESSION_LOG_DIR", "logs/sessions")
+        )
         self._sink = event_sink
         if self._sink is None and self.enabled and self.api_key:
-            self._sink = BackgroundExporter(endpoint=self.endpoint, api_key=self.api_key)
+            self._sink = BackgroundExporter(
+                endpoint=self.endpoint,
+                api_key=self.api_key,
+                diagnostic_hook=self._on_export_diagnostic,
+            )
         atexit.register(self.close)
 
     def session(
@@ -89,13 +103,55 @@ class VokerVoice:
             metadata=metadata,
         )
 
-    def _emit(self, event: dict[str, Any]) -> None:
+    def _emit(self, event: dict[str, Any]) -> dict[str, Any]:
+        bound_event = self._bound_event(event)
+        self._session_diagnostics.write(bound_event, "sdk_event_emitted")
         if self.enabled and self._sink is not None:
             try:
-                self._sink.emit(self._bound_event(event))
+                self._sink.emit(bound_event)
             except Exception:
                 if self.diagnostics:
                     logger.exception("Voker Voice dropped an event after an exporter error")
+        return bound_event
+
+    def deliver_terminal_event(
+        self, event: dict[str, Any], *, timeout_seconds: float = 15.0
+    ) -> bool:
+        """Synchronously deliver the terminal event before a short-lived worker exits.
+
+        The normal exporter has already queued this event. This direct, idempotent
+        request exists for runtimes such as LiveKit that terminate a job process
+        before its background queue can drain.
+        """
+
+        if not self.enabled or not self.api_key:
+            return False
+        try:
+            payload = gzip.compress(
+                json.dumps({"schema_version": "1.0", "events": [event]}, default=str).encode()
+            )
+            with httpx.Client(timeout=timeout_seconds) as client:
+                response = client.post(
+                    self.endpoint.rstrip("/") + "/v1/events/batch",
+                    content=payload,
+                    headers={
+                        "Content-Encoding": "gzip",
+                        "Content-Type": "application/json",
+                        "X-Voker-Api-Key": self.api_key,
+                    },
+                )
+            response.raise_for_status()
+            self._on_export_diagnostic("terminal_export_delivered", [event], {})
+            return True
+        except Exception as error:
+            self._on_export_diagnostic("terminal_export_failed", [event], {"error": str(error)})
+            return False
+
+    def _on_export_diagnostic(
+        self, stage: str, events: list[dict[str, Any]], data: dict[str, Any]
+    ) -> None:
+        for event in events:
+            self._session_diagnostics.write(event, stage, data)
 
     def _sanitize(self, value: Any) -> Any:
         try:

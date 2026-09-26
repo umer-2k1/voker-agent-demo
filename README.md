@@ -120,3 +120,57 @@ The agent is intentionally instructed to use tools and to recover once from erro
 - `error` events for model, tool, MCP-returned-tool, and unhandled LangGraph failures.
 
 If `VOKER_API_KEY` is absent, the service still runs but emits no Voker events; `/health` shows both configuration states.
+
+
+
+----------
+Use four terminals from the repository root. Since you use Supabase, do not run Docker, migrations, seed, or
+  seed-demo now—your project/database already exists and the dashboard is clean.
+
+  First, one-time only if dependencies are not installed:
+
+  source venv/bin/activate
+  python -m pip install -e "apps/api[dev]" -e "packages/python-sdk[livekit]"
+  python -m pip install -r example/voice_demo/requirements.txt
+  pnpm install
+
+  Make sure these files are configured:
+
+  .env
+  example/voice_demo/.env
+
+  Terminal 1 — Voker API:
+
+  source venv/bin/activate
+  uvicorn voker_voice_api.main:app --app-dir apps/api/src --reload --host localhost --port 8001
+
+  Terminal 2 — post-call analysis worker:
+
+  source venv/bin/activate
+  while true; do voker-voice-api worker-once; sleep 2; done
+
+  Processed 0 jobs is normal until a voice call ends.
+
+  Terminal 3 — dashboard:
+
+  pnpm dev:web -- --host localhost
+
+  Open:
+
+  http://localhost:5173
+
+  Terminal 4 — LiveKit voice agent:
+
+  source venv/bin/activate
+  python example/voice_demo/agent.py dev
+
+  It should register as:
+
+  voker-voice-demo
+
+  Then:
+
+  1. Open LiveKit Agent Playground.
+  2. Join/create a room.
+  3. Select voker-voice-demo.
+  4. Speak, for example:

@@ -132,266 +132,305 @@ export function OverviewPanel({
           zero.
         </p>
       </section>
-      <section
-        className="operations-brief"
-        aria-label="Conversation outcome summary"
-      >
-        <div className="operations-signal">
-          <span
-            className={
-              (analytics?.rates?.error ?? 0) > 0
-                ? "signal-status urgent"
-                : "signal-status"
-            }
+      {analytics?.session_count === 0 ? (
+        <section className="first-observation-state">
+          <div>
+            <h2>Your workspace is ready for its first call</h2>
+            <p>
+              Nothing is wrong—there is simply no conversation evidence yet.
+              Create an ingest key, connect your agent, and the first completed
+              session will unlock this dashboard.
+            </p>
+            <Link to="/settings">Create an API key</Link>
+            <span aria-hidden="true"> · </span>
+            <Link to="/setup">Connect an agent</Link>
+          </div>
+        </section>
+      ) : (
+        <>
+          <section
+            className="operations-brief"
+            aria-label="Conversation outcome summary"
           >
-            <i />{" "}
-            {(analytics?.rates?.error ?? 0) > 0
-              ? "Review conversation failures"
-              : "No recorded failures"}
-          </span>
-          <h2>
-            {analytics?.rates?.resolution == null
-              ? "Outcome evidence will appear after completed sessions."
-              : `${displayRate(analytics.rates.resolution)} of observed outcomes resolved successfully.`}
-          </h2>
-          <p>
-            Move from outcome patterns to the exact sessions, spans, turns, and
-            events that support them.
-          </p>
-        </div>
-        <dl className="operations-readout">
-          <div>
-            <dt>Total calls</dt>
-            <dd>{(analytics?.session_count ?? 0).toLocaleString()}</dd>
-          </div>
-          <div>
-            <dt>Resolution</dt>
-            <dd>{displayRate(analytics?.rates?.resolution)}</dd>
-          </div>
-          <div>
-            <dt>Corrections</dt>
-            <dd>{displayRate(analytics?.rates?.correction)}</dd>
-          </div>
-          <div>
-            <dt>Escalation</dt>
-            <dd>{displayRate(analytics?.rates?.escalation)}</dd>
-          </div>
-          <div>
-            <dt>Abandonment</dt>
-            <dd>{displayRate(analytics?.rates?.abandonment)}</dd>
-          </div>
-          <div>
-            <dt>STT p90 latency</dt>
-            <dd>{formatLatency(analytics?.latency?.stt?.p90_ms ?? null)}</dd>
-          </div>
-        </dl>
-      </section>
-      <section className="insight-banner" id="insights">
-        <div>
-          <h2>Ask why a conversation failed—with evidence.</h2>
-          <p>
-            Deterministic signals are recorded immediately. After a session
-            ends, analysis findings are attached to the exact trace events that
-            support them.
-          </p>
-        </div>
-        <span>
-          {findingsCount} linked findings ·{" "}
-          {overview?.metrics.active_sessions ?? 0} active ·{" "}
-          {overview?.metrics.error_count ?? 0} recorded errors
-        </span>
-      </section>
-      <section className="analytics-grid" aria-label="Voice impact analytics">
-        <InterruptionResolutionChart
-          points={analytics?.interruption_resolution_points ?? []}
-        />
-        <div className="grid gap-3">
-          <TopIntentsChart intents={analytics?.intent_comparisons ?? []} />
-          <VoiceIssuesChart issues={analytics?.voice_issue_impacts ?? []} />
-        </div>
-      </section>
-      <section
-        className="grid gap-3 md:grid-cols-4"
-        aria-label="Cost, usage, and outcome provenance"
-      >
-        <Card className="cohort-card">
-          <p>Tracked cost</p>
-          <strong>{formatCost(analytics?.cost.amount_micros)}</strong>
-          <span>
-            {formatCost(analytics?.cost.exact_amount_micros)} exact ·{" "}
-            {formatCost(analytics?.cost.estimated_amount_micros)} estimated
-          </span>
-        </Card>
-        <Card className="cohort-card">
-          <p>Voice usage</p>
-          <strong>
-            {analytics?.usage.audio_seconds == null
-              ? "Unknown"
-              : `${analytics.usage.audio_seconds.toFixed(1)} seconds`}
-          </strong>
-          <span>
-            {analytics?.usage.tts_characters == null
-              ? "TTS units unknown"
-              : `${analytics.usage.tts_characters.toLocaleString()} TTS characters`}
-          </span>
-        </Card>
-        <Card className="cohort-card">
-          <p>Outcome provenance</p>
-          <strong>{analytics?.outcome_sources.explicit ?? 0} explicit</strong>
-          <span>
-            {analytics?.outcome_sources.inferred ?? 0} inferred ·{" "}
-            {analytics?.outcome_sources.unknown ?? 0} unknown
-          </span>
-        </Card>
-        <Card className="cohort-card">
-          <p>Voice behavior</p>
-          <strong>
-            {analytics?.voice_behavior.interruption_sessions ?? 0} interrupted
-          </strong>
-          <span>
-            {analytics?.voice_behavior.dead_air_sessions ?? 0} dead-air ·{" "}
-            {analytics?.voice_behavior.talk_over_sessions ?? 0} talk-over
-          </span>
-        </Card>
-      </section>
-      <section
-        className="analytics-grid"
-        aria-label="Recurring findings and comparisons"
-      >
-        <Card className="chart-card">
-          <h2>Recurring observed conditions</h2>
-          <div className="mt-4 grid gap-2">
-            {(analytics?.insights ?? [])
-              .filter((item) => item.count > 0)
-              .map((item) => (
-                <div
-                  className="flex items-center justify-between gap-3 border-b border-slate-100 py-2"
-                  key={item.key}
-                >
-                  <span className="text-sm text-slate-700">{item.label}</span>
-                  {item.session_ids[0] ? (
-                    <Link
-                      className="text-sm font-semibold text-emerald-800 underline-offset-4 hover:underline"
-                      to={`/sessions/${item.session_ids[0]}`}
-                    >
-                      {item.count} sessions
-                    </Link>
-                  ) : (
-                    <b>{item.count}</b>
-                  )}
-                </div>
-              ))}
-            {(analytics?.failure_category_insights ?? []).map(
-              ({ category, count, session_ids }) => (
-                <div
-                  className="flex items-center justify-between gap-3 border-b border-slate-100 py-2"
-                  key={category}
-                >
-                  <span className="text-sm text-slate-700">
-                    {category.replaceAll("_", " ")}
-                  </span>
-                  {session_ids[0] ? (
-                    <Link
-                      className="text-sm font-semibold text-emerald-800 underline-offset-4 hover:underline"
-                      to={`/sessions/${session_ids[0]}`}
-                    >
-                      {count} findings
-                    </Link>
-                  ) : (
-                    <b className="text-sm tabular-nums text-slate-900">
-                      {count} findings
-                    </b>
-                  )}
-                </div>
-              ),
-            )}
-            {!(analytics?.insights ?? []).some((item) => item.count > 0) ? (
-              <p className="empty-state">
-                No recurring failure condition has enough observed evidence yet.
+            <div className="operations-signal">
+              <span
+                className={
+                  (analytics?.rates?.error ?? 0) > 0
+                    ? "signal-status urgent"
+                    : "signal-status"
+                }
+              >
+                <i />{" "}
+                {(analytics?.rates?.error ?? 0) > 0
+                  ? "Review conversation failures"
+                  : "No recorded failures"}
+              </span>
+              <h2>
+                {analytics?.rates?.resolution == null
+                  ? "Outcome evidence will appear after completed sessions."
+                  : `${displayRate(analytics.rates.resolution)} of observed outcomes resolved successfully.`}
+              </h2>
+              <p>
+                Move from outcome patterns to the exact sessions, spans, turns,
+                and events that support them.
               </p>
-            ) : null}
-          </div>
-        </Card>
-        <Card className="chart-card">
-          <h2>Agent and provider comparison</h2>
-          <div className="mt-4 grid gap-3">
-            {[
-              ["Agent", analytics?.comparisons?.agents ?? []] as const,
-              ["Version", analytics?.comparisons?.versions ?? []] as const,
-              ["Platform", analytics?.comparisons?.platforms ?? []] as const,
-              ["Provider", analytics?.comparisons?.providers ?? []] as const,
-              ["Model", analytics?.comparisons?.models ?? []] as const,
-            ]
-              .flatMap(([group, items]) =>
-                items.map((item) => ({ ...item, group })),
-              )
-              .slice(0, 10)
-              .map((item) => (
-                <div
-                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-3"
-                  key={`${item.group}-${item.label}`}
-                >
-                  <span className="truncate text-sm text-slate-700">
-                    <small className="mr-1 text-slate-600">{item.group}</small>
-                    {item.label}
-                  </span>
-                  {item.session_ids[0] ? (
-                    <Link
-                      className="text-sm font-semibold tabular-nums text-emerald-800 underline-offset-4 hover:underline"
-                      to={`/sessions/${item.session_ids[0]}`}
-                    >
-                      {displayRate(item.resolution_rate)} ·{" "}
-                      {item.known_outcomes} known / {item.sessions} sessions
-                    </Link>
-                  ) : (
-                    <b className="text-sm tabular-nums text-slate-900">
-                      {displayRate(item.resolution_rate)} ·{" "}
-                      {item.known_outcomes} known / {item.sessions} sessions
-                    </b>
-                  )}
-                </div>
-              ))}
-            {!(
-              analytics?.comparisons?.agents?.length ||
-              analytics?.comparisons?.versions?.length ||
-              analytics?.comparisons?.platforms?.length ||
-              analytics?.comparisons?.providers?.length ||
-              analytics?.comparisons?.models?.length
-            ) ? (
-              <p className="empty-state">
-                Comparisons appear when agent versions or provider models report
-                outcomes.
+            </div>
+            <dl className="operations-readout">
+              <div>
+                <dt>Total calls</dt>
+                <dd>{(analytics?.session_count ?? 0).toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Resolution</dt>
+                <dd>{displayRate(analytics?.rates?.resolution)}</dd>
+              </div>
+              <div>
+                <dt>Corrections</dt>
+                <dd>{displayRate(analytics?.rates?.correction)}</dd>
+              </div>
+              <div>
+                <dt>Escalation</dt>
+                <dd>{displayRate(analytics?.rates?.escalation)}</dd>
+              </div>
+              <div>
+                <dt>Abandonment</dt>
+                <dd>{displayRate(analytics?.rates?.abandonment)}</dd>
+              </div>
+              <div>
+                <dt>STT p90 latency</dt>
+                <dd>
+                  {formatLatency(analytics?.latency?.stt?.p90_ms ?? null)}
+                </dd>
+              </div>
+            </dl>
+          </section>
+          <section className="insight-banner" id="insights">
+            <div>
+              <h2>Ask why a conversation failed—with evidence.</h2>
+              <p>
+                Deterministic signals are recorded immediately. After a session
+                ends, analysis findings are attached to the exact trace events
+                that support them.
               </p>
-            ) : null}
-          </div>
-        </Card>
-      </section>
-      <section className="cohort-grid" aria-label="Voice Impact cohorts">
-        <CohortCard
-          label="High interruptions"
-          cohort={analytics?.voice_impact_cohorts.high_interruption ?? null}
-        />
-        <CohortCard
-          label="Observed dead air"
-          cohort={analytics?.voice_impact_cohorts.dead_air ?? null}
-        />
-        <CohortCard
-          label="No dead air"
-          cohort={analytics?.voice_impact_cohorts.no_dead_air ?? null}
-        />
-        <CohortCard
-          label="Normal interruptions"
-          cohort={analytics?.voice_impact_cohorts.normal_interruption ?? null}
-        />
-        <CohortCard
-          label="Slow STT"
-          cohort={analytics?.voice_impact_cohorts.slow_stt ?? null}
-        />
-        <CohortCard
-          label="Fast STT"
-          cohort={analytics?.voice_impact_cohorts.fast_stt ?? null}
-        />
-      </section>
+            </div>
+            <span>
+              {findingsCount} linked findings ·{" "}
+              {overview?.metrics.active_sessions ?? 0} active ·{" "}
+              {overview?.metrics.error_count ?? 0} recorded errors
+            </span>
+          </section>
+          <section
+            className="analytics-grid"
+            aria-label="Voice impact analytics"
+          >
+            <InterruptionResolutionChart
+              points={analytics?.interruption_resolution_points ?? []}
+            />
+            <div className="grid gap-3">
+              <TopIntentsChart intents={analytics?.intent_comparisons ?? []} />
+              <VoiceIssuesChart issues={analytics?.voice_issue_impacts ?? []} />
+            </div>
+          </section>
+          <section
+            className="grid gap-3 md:grid-cols-4"
+            aria-label="Cost, usage, and outcome provenance"
+          >
+            <Card className="cohort-card">
+              <p>Tracked cost</p>
+              <strong>{formatCost(analytics?.cost.amount_micros)}</strong>
+              <span>
+                {formatCost(analytics?.cost.exact_amount_micros)} exact ·{" "}
+                {formatCost(analytics?.cost.estimated_amount_micros)} estimated
+              </span>
+            </Card>
+            <Card className="cohort-card">
+              <p>Voice usage</p>
+              <strong>
+                {analytics?.usage.audio_seconds == null
+                  ? "Unknown"
+                  : `${analytics.usage.audio_seconds.toFixed(1)} seconds`}
+              </strong>
+              <span>
+                {analytics?.usage.tts_characters == null
+                  ? "TTS units unknown"
+                  : `${analytics.usage.tts_characters.toLocaleString()} TTS characters`}
+              </span>
+            </Card>
+            <Card className="cohort-card">
+              <p>Outcome provenance</p>
+              <strong>
+                {analytics?.outcome_sources.explicit ?? 0} explicit
+              </strong>
+              <span>
+                {analytics?.outcome_sources.inferred ?? 0} inferred ·{" "}
+                {analytics?.outcome_sources.unknown ?? 0} unknown
+              </span>
+            </Card>
+            <Card className="cohort-card">
+              <p>Voice behavior</p>
+              <strong>
+                {analytics?.voice_behavior.interruption_sessions ?? 0}{" "}
+                interrupted
+              </strong>
+              <span>
+                {analytics?.voice_behavior.dead_air_sessions ?? 0} dead-air ·{" "}
+                {analytics?.voice_behavior.talk_over_sessions ?? 0} talk-over
+              </span>
+            </Card>
+          </section>
+          <section
+            className="analytics-grid"
+            aria-label="Recurring findings and comparisons"
+          >
+            <Card className="chart-card">
+              <h2>Recurring observed conditions</h2>
+              <div className="mt-4 grid gap-2">
+                {(analytics?.insights ?? [])
+                  .filter((item) => item.count > 0)
+                  .map((item) => (
+                    <div
+                      className="flex items-center justify-between gap-3 border-b border-slate-100 py-2"
+                      key={item.key}
+                    >
+                      <span className="text-sm text-slate-700">
+                        {item.label}
+                      </span>
+                      {item.session_ids[0] ? (
+                        <Link
+                          className="text-sm font-semibold text-emerald-800 underline-offset-4 hover:underline"
+                          to={`/sessions/${item.session_ids[0]}`}
+                        >
+                          {item.count} sessions
+                        </Link>
+                      ) : (
+                        <b>{item.count}</b>
+                      )}
+                    </div>
+                  ))}
+                {(analytics?.failure_category_insights ?? []).map(
+                  ({ category, count, session_ids }) => (
+                    <div
+                      className="flex items-center justify-between gap-3 border-b border-slate-100 py-2"
+                      key={category}
+                    >
+                      <span className="text-sm text-slate-700">
+                        {category.replaceAll("_", " ")}
+                      </span>
+                      {session_ids[0] ? (
+                        <Link
+                          className="text-sm font-semibold text-emerald-800 underline-offset-4 hover:underline"
+                          to={`/sessions/${session_ids[0]}`}
+                        >
+                          {count} findings
+                        </Link>
+                      ) : (
+                        <b className="text-sm tabular-nums text-slate-900">
+                          {count} findings
+                        </b>
+                      )}
+                    </div>
+                  ),
+                )}
+                {!(analytics?.insights ?? []).some((item) => item.count > 0) ? (
+                  <p className="empty-state">
+                    No recurring failure condition has enough observed evidence
+                    yet.
+                  </p>
+                ) : null}
+              </div>
+            </Card>
+            <Card className="chart-card">
+              <h2>Agent and provider comparison</h2>
+              <div className="mt-4 grid gap-3">
+                {[
+                  ["Agent", analytics?.comparisons?.agents ?? []] as const,
+                  ["Version", analytics?.comparisons?.versions ?? []] as const,
+                  [
+                    "Platform",
+                    analytics?.comparisons?.platforms ?? [],
+                  ] as const,
+                  [
+                    "Provider",
+                    analytics?.comparisons?.providers ?? [],
+                  ] as const,
+                  ["Model", analytics?.comparisons?.models ?? []] as const,
+                ]
+                  .flatMap(([group, items]) =>
+                    items.map((item) => ({ ...item, group })),
+                  )
+                  .slice(0, 10)
+                  .map((item) => (
+                    <div
+                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3"
+                      key={`${item.group}-${item.label}`}
+                    >
+                      <span className="truncate text-sm text-slate-700">
+                        <small className="mr-1 text-slate-600">
+                          {item.group}
+                        </small>
+                        {item.label}
+                      </span>
+                      {item.session_ids[0] ? (
+                        <Link
+                          className="text-sm font-semibold tabular-nums text-emerald-800 underline-offset-4 hover:underline"
+                          to={`/sessions/${item.session_ids[0]}`}
+                        >
+                          {displayRate(item.resolution_rate)} ·{" "}
+                          {item.known_outcomes} known / {item.sessions} sessions
+                        </Link>
+                      ) : (
+                        <b className="text-sm tabular-nums text-slate-900">
+                          {displayRate(item.resolution_rate)} ·{" "}
+                          {item.known_outcomes} known / {item.sessions} sessions
+                        </b>
+                      )}
+                    </div>
+                  ))}
+                {!(
+                  analytics?.comparisons?.agents?.length ||
+                  analytics?.comparisons?.versions?.length ||
+                  analytics?.comparisons?.platforms?.length ||
+                  analytics?.comparisons?.providers?.length ||
+                  analytics?.comparisons?.models?.length
+                ) ? (
+                  <p className="empty-state">
+                    Comparisons appear when agent versions or provider models
+                    report outcomes.
+                  </p>
+                ) : null}
+              </div>
+            </Card>
+          </section>
+          <section className="cohort-grid" aria-label="Voice Impact cohorts">
+            <CohortCard
+              label="High interruptions"
+              cohort={analytics?.voice_impact_cohorts.high_interruption ?? null}
+            />
+            <CohortCard
+              label="Observed dead air"
+              cohort={analytics?.voice_impact_cohorts.dead_air ?? null}
+            />
+            <CohortCard
+              label="No dead air"
+              cohort={analytics?.voice_impact_cohorts.no_dead_air ?? null}
+            />
+            <CohortCard
+              label="Normal interruptions"
+              cohort={
+                analytics?.voice_impact_cohorts.normal_interruption ?? null
+              }
+            />
+            <CohortCard
+              label="Slow STT"
+              cohort={analytics?.voice_impact_cohorts.slow_stt ?? null}
+            />
+            <CohortCard
+              label="Fast STT"
+              cohort={analytics?.voice_impact_cohorts.fast_stt ?? null}
+            />
+          </section>
+        </>
+      )}
     </>
   );
 }

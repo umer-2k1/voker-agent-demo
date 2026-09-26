@@ -1,16 +1,20 @@
+import asyncio
 import gzip
 import hashlib
 import hmac
 import json
 import uuid
 from collections.abc import AsyncIterator
+from threading import Lock
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.requests import ClientDisconnect
 
 from voker_voice_api.auth import authenticate_ingest_key, raw_ingest_key, require_ingest_context
 from voker_voice_api.config import get_settings
@@ -48,9 +52,20 @@ from voker_voice_api.security import decrypt_connector_secrets, hash_api_key
 
 router = APIRouter(prefix="/v1", tags=["ingestion"])
 
+# A local server receives exporter batches concurrently. First-seen events
+# materialize sessions, turns, spans and agent runs, so serialize those
+# check-then-create writes within this process to avoid unique-key races.
+_INGEST_WRITE_LOCK = Lock()
+
 
 async def decode_json_body(request: Request) -> dict[str, Any]:
-    body = await request.body()
+    try:
+        body = await request.body()
+    except ClientDisconnect as error:
+        # The SDK exporter may abandon a background request during shutdown or
+        # after a local network timeout. Nothing has been ingested yet, so this
+        # is a normal client error rather than an application exception.
+        raise HTTPException(status_code=400, detail="Client disconnected before upload") from error
     settings = get_settings()
     if len(body) > settings.ingest_max_body_bytes:
         raise HTTPException(
@@ -88,11 +103,29 @@ async def create_event_batch(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Too many events"
         )
 
-    # Read and validate the potentially-compressed request before querying the database.
-    # This keeps the voice SDK responsive when the database has a short transient delay.
-    context = authenticate_ingest_key(raw_ingest_key(request), db)
-    response = ingest_batch(db, context, batch.events)
-    db.commit()
+    # Supabase writes can take seconds for a multi-event voice batch. Run the
+    # synchronous SQLAlchemy work off the ASGI loop so a terminal event from a
+    # short-lived LiveKit job is not queued behind an earlier telemetry batch.
+    def persist_batch() -> EventBatchResponse:
+        with _INGEST_WRITE_LOCK:
+            context = authenticate_ingest_key(
+                raw_ingest_key(request, request.headers.get("x-voker-api-key")), db
+            )
+            response = ingest_batch(db, context, batch.events)
+            db.commit()
+            return response
+
+    try:
+        response = await asyncio.to_thread(persist_batch)
+    except SQLAlchemyError as error:
+        # Never leave a failed transaction in a dependency session. Returning a
+        # bounded retryable response is preferable to raising a second
+        # PendingRollbackError that hides the original database failure.
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Telemetry storage is temporarily unavailable; retry this batch.",
+        ) from error
     accepted_ids = {item.event_id for item in response.items if item.status == "accepted"}
     for raw_event in batch.events:
         if raw_event.get("event_id") in accepted_ids:
@@ -108,7 +141,9 @@ async def ingest_webhook(
     db: Session,
 ) -> EventBatchResponse:
     raw = await decode_json_body(request)
-    context = authenticate_ingest_key(raw_ingest_key(request), db)
+    context = authenticate_ingest_key(
+        raw_ingest_key(request, request.headers.get("x-voker-api-key")), db
+    )
     events = (
         normalize_vapi(raw, delivery_id)
         if provider == "vapi"

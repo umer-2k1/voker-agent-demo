@@ -21,6 +21,7 @@ from voker_voice_api.models import (
 from voker_voice_api.models import Session as VoiceSession
 from voker_voice_api.routers.dashboard import get_session_trace, list_sessions, project_setup
 from voker_voice_api.schemas import CanonicalEvent
+from voker_voice_api.worker import reconcile_stale_sessions
 
 
 def database() -> tuple[Session, IngestContext]:
@@ -184,6 +185,22 @@ def test_failed_session_remains_failed_and_queues_analysis_once() -> None:
     assert session.ended_at is not None
     assert session.ended_at.replace(tzinfo=UTC) == ended_at + timedelta(seconds=1)
     assert session.metadata_ == {"tenant": "demo"}
+    assert len(list(db.scalars(select(Job)))) == 2
+
+
+def test_stalled_session_is_marked_incomplete_and_queues_analysis() -> None:
+    db, context = database()
+    started_at = datetime.now(UTC) - timedelta(minutes=5)
+    persist_event(db, context, event("evt-stalled", "session.started", started_at))
+    db.flush()
+
+    reconciled = reconcile_stale_sessions(db, now=datetime.now(UTC) + timedelta(minutes=5))
+
+    session = db.scalar(select(VoiceSession))
+    assert reconciled == 1
+    assert session is not None
+    assert session.status == "incomplete"
+    assert session.ended_at is not None
     assert len(list(db.scalars(select(Job)))) == 2
 
 

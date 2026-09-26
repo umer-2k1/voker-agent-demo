@@ -37,6 +37,13 @@ test("seeks the waveform and marks the matching transcript turn", () => {
           error_count: 0,
           event_count: 1,
         },
+        collection: {
+          last_event_type: "session.ended",
+          last_event_at: "2026-01-01T12:01:30Z",
+          last_received_at: "2026-01-01T12:01:30Z",
+          terminal_event_received: true,
+          diagnostic_log: "logs/sessions/session-1.jsonl",
+        },
         event_page: { offset: 0, limit: 250, total: 1 },
         voice_behavior: {
           interruptions: 0,

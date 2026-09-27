@@ -123,12 +123,19 @@ def list_api_keys(
     project_slug: str, user: AuthenticatedUser, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     project = project_for_slug(db, project_slug, user)
-    keys = db.execute(
+    rows = db.execute(
         select(APIKey, Environment)
         .join(Environment, APIKey.environment_id == Environment.id)
         .where(APIKey.project_id == project.id)
         .order_by(APIKey.created_at.desc())
     ).all()
+    # Ingest keys only — read-only MCP credentials live under /mcp-keys. The
+    # scopes column is JSON, so filter in Python rather than in SQL.
+    keys = [
+        (key, environment)
+        for key, environment in rows
+        if "mcp:read" not in (key.scopes or [])
+    ]
     return {
         "items": [
             {
@@ -177,12 +184,17 @@ def list_mcp_keys(
     """List connection metadata for read-only MCP credentials."""
 
     project = project_for_slug(db, project_slug, user)
-    keys = db.execute(
+    rows = db.execute(
         select(APIKey, Environment)
         .join(Environment, APIKey.environment_id == Environment.id)
-        .where(APIKey.project_id == project.id, APIKey.scopes.contains(["mcp:read"]))
+        .where(APIKey.project_id == project.id)
         .order_by(APIKey.created_at.desc())
     ).all()
+    keys = [
+        (key, environment)
+        for key, environment in rows
+        if "mcp:read" in (key.scopes or [])
+    ]
     return {
         "endpoint": get_settings().mcp_server_url,
         "items": [

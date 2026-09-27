@@ -189,6 +189,21 @@ def test_owner_can_create_a_read_only_mcp_key_without_changing_ingest_keys() -> 
         assert listed.status_code == 200
         assert listed.json()["items"][0]["prefix"] == created.json()["prefix"]
         assert listed.json()["items"][0]["scopes"] == ["mcp:read"]
+
+        # The read-only MCP credential must not appear among ingest keys.
+        ingest = client.get("/api/projects/voice/api-keys")
+        assert ingest.status_code == 200
+        assert ingest.json()["items"] == []
+
+        ingest_key = client.post(
+            "/api/projects/voice/api-keys",
+            json={"label": "SDK", "environment": "development"},
+        )
+        assert ingest_key.status_code == 201
+        ingest_after = client.get("/api/projects/voice/api-keys")
+        assert [item["label"] for item in ingest_after.json()["items"]] == ["SDK"]
+        mcp_after = client.get("/api/projects/voice/mcp-keys")
+        assert [item["label"] for item in mcp_after.json()["items"]] == ["Codex"]
     finally:
         app.dependency_overrides.clear()
         db.close()

@@ -30,6 +30,8 @@ PROMPT_VERSION = SEMANTIC_PROMPT_VERSION
 SCHEMA_VERSION = ANALYSIS_SCHEMA_VERSION
 MAX_EVIDENCE_ITEMS = 200
 MAX_EVIDENCE_CHARS = 96_000
+# Keep in step with the SemanticResult/SemanticFinding schema cap.
+MAX_EVIDENCE_REFERENCES = 8
 MAX_EVALUATOR_ATTEMPTS = 2
 DEFAULT_EXCLUSIONS = {
     "api_key",
@@ -112,11 +114,18 @@ def parse_semantic_result(content: str) -> SemanticResult:
     # despite the requested EvidenceReference shape.  Normalize only those known
     # prefixes; all other values still fail strict schema/evidence validation.
     if isinstance(payload, dict):
+        # The model may cite more references than the schema allows; truncate
+        # rather than fail the whole evaluation over a longer evidence list.
+        top_evidence = payload.get("evidence")
+        if isinstance(top_evidence, list):
+            payload["evidence"] = top_evidence[:MAX_EVIDENCE_REFERENCES]
         for finding in payload.get("findings", []):
             if isinstance(finding, dict):
                 evidence = finding.get("evidence")
                 if isinstance(evidence, list):
-                    finding["evidence"] = [_normalize_evidence_reference(item) for item in evidence]
+                    finding["evidence"] = [
+                        _normalize_evidence_reference(item) for item in evidence
+                    ][:MAX_EVIDENCE_REFERENCES]
     return SemanticResult.model_validate(payload)
 
 

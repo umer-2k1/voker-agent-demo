@@ -17,6 +17,7 @@ class DurableEventOutbox:
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self.max_events = max_events
         self._lock = threading.RLock()
+        self._count = 0
         self._connection = sqlite3.connect(
             self.path, timeout=10, check_same_thread=False, isolation_level=None
         )
@@ -50,6 +51,12 @@ class DurableEventOutbox:
                 );
                 """
             )
+            # Track the row count in memory: a per-append SELECT count(*) is a
+            # full-table scan that (with a growing outbox) stalled the caller's
+            # event loop. The cap is a safety bound, not an exact invariant.
+            self._count = int(
+                self._connection.execute("SELECT count(*) FROM outbox_events").fetchone()[0]
+            )
 
     def append(self, event: dict[str, Any]) -> bool:
         event_id = str(event.get("event_id") or "")
@@ -62,10 +69,7 @@ class DurableEventOutbox:
             ).fetchone()
             if existing is not None:
                 return False
-            count = int(
-                self._connection.execute("SELECT count(*) FROM outbox_events").fetchone()[0]
-            )
-            if count >= self.max_events:
+            if self._count >= self.max_events:
                 raise RuntimeError(f"durable event outbox is full ({self.max_events} events)")
             self._connection.execute(
                 """
@@ -75,6 +79,7 @@ class DurableEventOutbox:
                 """,
                 (event_id, payload, time.time()),
             )
+            self._count += 1
         return True
 
     def ready(self, *, limit: int, now: float | None = None) -> list[dict[str, Any]]:
@@ -99,6 +104,7 @@ class DurableEventOutbox:
                 f"DELETE FROM outbox_events WHERE event_id IN ({placeholders})",
                 tuple(event_ids),
             )
+            self._count = max(0, self._count - len(event_ids))
 
     def retry(
         self, event_ids: set[str], *, reason: str, delay_seconds: float
@@ -144,6 +150,7 @@ class DurableEventOutbox:
                 f"DELETE FROM outbox_events WHERE event_id IN ({placeholders})",
                 tuple(event_ids),
             )
+            self._count = max(0, self._count - len(event_ids))
 
     def health(self) -> dict[str, int | float | None | str]:
         with self._lock:

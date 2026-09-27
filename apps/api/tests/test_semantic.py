@@ -186,6 +186,18 @@ def test_semantic_parser_normalizes_unambiguous_bare_finding_ids() -> None:
     ]
 
 
+def test_semantic_parser_truncates_oversized_evidence_lists() -> None:
+    payload = json.loads(semantic_json(event_id="evt_1", finding_event_id="evt_1"))
+    reference = {"entity_type": "event", "entity_id": "evt_1"}
+    payload["evidence"] = [reference] * 9
+    payload["findings"][0]["evidence"] = [reference] * 9
+
+    result = parse_semantic_result(json.dumps(payload))
+
+    assert len(result.evidence) == 8
+    assert len(result.findings[0].evidence) == 8
+
+
 def test_evaluator_evidence_is_bounded_redacted_and_omits_raw_receipts() -> None:
     db, voice_session, _project = database()
     events = list(db.scalars(select(Event)))

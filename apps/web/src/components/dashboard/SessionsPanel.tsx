@@ -337,12 +337,9 @@ export function SessionsPanel({
     localStorage.setItem(savedFiltersKey, JSON.stringify(savedFilters));
   }, [savedFilters]);
 
-  const triagedSessions = [...sessions].sort((left, right) => {
-    const priority = (session: VoiceSession) =>
-      session.error_count > 0 ? 0 : session.status === "in_progress" ? 1 : 2;
-    return priority(left) - priority(right);
-  });
-
+  // The queue renders in the order the API returns it so the chosen sort
+  // (newest first by default) is honoured. "Needs review" is conveyed by the
+  // status dot, summary chips, and the dedicated "Most errors" sort.
   const needsReview = sessions.filter((s) => s.error_count > 0).length;
   const inProgress = sessions.filter((s) => s.status === "in_progress").length;
   const complete = sessions.filter(
@@ -741,7 +738,7 @@ export function SessionsPanel({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {triagedSessions.map((session) => {
+              {sessions.map((session) => {
                 const review = reviewState(session);
                 return (
                   <TableRow

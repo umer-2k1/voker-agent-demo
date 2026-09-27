@@ -88,6 +88,34 @@ test("summarises the queue and opens a session trace", () => {
   expect(onSelect).toHaveBeenCalledWith("session-2");
 });
 
+test("keeps the server's newest-first order instead of hoisting errors", () => {
+  render(
+    <SessionsPanel
+      {...props({
+        page: { offset: 0, limit: 30, total: 2 },
+        sessions: [
+          session({
+            id: "newer",
+            external_session_id: "call-newer",
+            started_at: "2026-09-27T18:40:00Z",
+          }),
+          session({
+            id: "older-error",
+            external_session_id: "call-older",
+            status: "failed",
+            error_count: 2,
+            started_at: "2026-09-26T17:07:00Z",
+          }),
+        ],
+      })}
+    />,
+  );
+
+  const rows = screen.getAllByRole("button", { name: /call-/i });
+  expect(rows[0]).toHaveTextContent("call-newer");
+  expect(rows[1]).toHaveTextContent("call-older");
+});
+
 test("offers a reset when filters exclude every session", () => {
   const onSearch = vi.fn();
   render(<SessionsPanel {...props({ search: "nothing", onSearch })} />);

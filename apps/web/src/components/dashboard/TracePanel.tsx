@@ -6,6 +6,7 @@ import {
   ExternalLink,
   RotateCcw,
   Share2,
+  Wrench,
   Waypoints,
   Zap,
 } from "lucide-react";
@@ -56,16 +57,42 @@ function certaintyLabel(certainty: string) {
   }
 }
 
+function findingStatement(statement: string) {
+  return statement.replace(/^Detected condition:\s*/i, "");
+}
+
+function formatMissingRanges(ranges: number[][]) {
+  return ranges
+    .map(([start, end]) => (start === end ? String(start) : `${start}–${end}`))
+    .join(", ");
+}
+
 function statusMeta(status: string) {
   switch (status) {
     case "completed":
-      return { label: "Completed", variant: "success" as const, tone: "text-success" };
+      return {
+        label: "Completed",
+        variant: "success" as const,
+        tone: "text-success",
+      };
     case "in_progress":
-      return { label: "In progress", variant: "info" as const, tone: "text-info" };
+      return {
+        label: "In progress",
+        variant: "info" as const,
+        tone: "text-info",
+      };
     case "failed":
-      return { label: "Failed", variant: "destructive" as const, tone: "text-destructive" };
+      return {
+        label: "Failed",
+        variant: "destructive" as const,
+        tone: "text-destructive",
+      };
     case "incomplete":
-      return { label: "Incomplete", variant: "warning" as const, tone: "text-warning" };
+      return {
+        label: "Incomplete",
+        variant: "warning" as const,
+        tone: "text-warning",
+      };
     default:
       return {
         label: status.replaceAll("_", " "),
@@ -259,8 +286,7 @@ function TraceWaterfall({ trace }: { trace: Trace }) {
         );
         const captureLimited =
           /\[(?:REDACTED|EXCLUDED|OMITTED|TRUNCATED)/i.test(capturedJson);
-        const failed =
-          span.status === "error" || span.status === "timeout";
+        const failed = span.status === "error" || span.status === "timeout";
         return (
           <details
             className="group grid grid-cols-[minmax(150px,260px)_minmax(260px,1fr)_88px] gap-3 rounded-lg px-3 py-2 hover:bg-accent/50"
@@ -351,9 +377,7 @@ export function TracePanel({
       <Card className="overflow-hidden" id="trace">
         <CardHeader>
           <Eyebrow>Session trace</Eyebrow>
-          <H2>
-            {loading ? "Loading session…" : "Select a session"}
-          </H2>
+          <H2>{loading ? "Loading session…" : "Select a session"}</H2>
           <p className="text-sm text-muted-foreground">
             {loading
               ? "Fetching the trace, transcript, and evidence for this call."
@@ -444,35 +468,67 @@ function TracePanelContent({
     corrections: 0,
     abandonment: 0,
   };
-  const collection = trace.collection ?? {
+  const deadAirSource = trace.voice_behavior_sources?.dead_air;
+  const reportedCollection = trace.collection as
+    Partial<Trace["collection"]> | undefined;
+  const collection = {
     last_event_type: trace.events.at(-1)?.event_type ?? null,
     last_event_at: trace.events.at(-1)?.occurred_at ?? null,
     last_received_at: null,
-    terminal_event_received: ["completed", "failed", "cancelled", "incomplete"].includes(
-      trace.session.status,
-    ),
+    terminal_event_received: [
+      "completed",
+      "failed",
+      "cancelled",
+      "incomplete",
+    ].includes(trace.session.status),
     diagnostic_log: `logs/sessions/${trace.session.id}.jsonl`,
+    capture_state: "complete" as const,
+    highest_seen_sequence: null,
+    highest_contiguous_sequence: null,
+    expected_last_sequence: null,
+    missing_ranges: [],
+    raw_event_count: trace.events.length,
+    projected_event_count: trace.events.length,
+    ...reportedCollection,
   };
+  const toolCalls = trace.tool_calls ?? [];
+  const toolSummary = trace.tool_summary ?? {
+    total: toolCalls.length,
+    succeeded: toolCalls.filter((tool) => tool.status === "ok").length,
+    failed: toolCalls.filter((tool) =>
+      ["error", "timeout", "cancelled"].includes(tool.status),
+    ).length,
+  };
+  const captureIncomplete = ["incomplete", "recovering"].includes(
+    collection.capture_state,
+  );
+  const visibleTurns = trace.turns.filter((turn) =>
+    Boolean(turn.transcript?.trim()),
+  );
   const timelineDurationSeconds = Math.max(
     (trace.session.duration_ms ?? 0) / 1000,
-    ...trace.turns.map((turn) => {
+    ...visibleTurns.map((turn) => {
       const end = turn.ended_at ?? turn.started_at;
       return Math.max(
         1,
-        (new Date(end).getTime() - new Date(trace.session.started_at).getTime()) / 1000,
+        (new Date(end).getTime() -
+          new Date(trace.session.started_at).getTime()) /
+          1000,
       );
     }),
     ...trace.events.map((event) =>
       Math.max(
         1,
-        (new Date(event.occurred_at).getTime() - new Date(trace.session.started_at).getTime()) / 1000,
+        (new Date(event.occurred_at).getTime() -
+          new Date(trace.session.started_at).getTime()) /
+          1000,
       ),
     ),
     1,
   );
-  const observedTurnGaps = trace.turns.slice(0, -1).flatMap((turn, index) => {
+  const observedTurnGaps = visibleTurns.slice(0, -1).flatMap((turn, index) => {
     if (!turn.ended_at) return [];
-    const next = trace.turns[index + 1];
+    const next = visibleTurns[index + 1];
     const start = Math.max(
       0,
       (new Date(turn.ended_at).getTime() -
@@ -485,7 +541,9 @@ function TracePanelContent({
         new Date(trace.session.started_at).getTime()) /
         1000,
     );
-    return end - start > 2.5 ? [{ start, end, key: `${turn.id}-${next.id}` }] : [];
+    return end - start > 2.5
+      ? [{ start, end, key: `${turn.id}-${next.id}` }]
+      : [];
   });
 
   function seekToOffset(seconds: number, label: string) {
@@ -535,10 +593,7 @@ function TracePanelContent({
       <CardHeader className="flex flex-col gap-3 border-b border-border sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <Eyebrow>Session trace</Eyebrow>
-          <H2
-            className="truncate"
-            title={trace.session.external_session_id}
-          >
+          <H2 className="truncate" title={trace.session.external_session_id}>
             {trace.session.external_session_id}
           </H2>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -550,7 +605,11 @@ function TracePanelContent({
                 ? "Collection ended without a terminal event"
                 : trace.session.status === "in_progress"
                   ? "Receiving trace events"
-                  : "Trace collection complete"}
+                  : captureIncomplete
+                    ? "Call ended · telemetry incomplete"
+                    : collection.capture_state === "draining"
+                      ? "Call ended · draining telemetry"
+                      : "Trace collection complete"}
             </span>
           </p>
         </div>
@@ -603,7 +662,9 @@ function TracePanelContent({
             className="min-w-0 rounded-lg border border-border bg-card px-3 py-2"
             key={label}
           >
-            <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+            <dt className="text-xs font-medium text-muted-foreground">
+              {label}
+            </dt>
             <dd
               className="mt-1 truncate text-sm font-semibold text-foreground"
               title={value}
@@ -617,29 +678,39 @@ function TracePanelContent({
       <section
         className={cn(
           "flex flex-col gap-2 border-y px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between",
-          trace.session.status === "incomplete"
+          captureIncomplete
             ? "border-warning/30 bg-warning-soft"
             : "border-border bg-muted/40",
         )}
         aria-label="Trace collection health"
       >
         <div className="flex flex-wrap items-center gap-2">
-          {trace.session.status === "incomplete" ? (
-            <AlertTriangle className="size-4 shrink-0 text-warning" aria-hidden="true" />
+          {captureIncomplete ? (
+            <AlertTriangle
+              className="size-4 shrink-0 text-warning"
+              aria-hidden="true"
+            />
           ) : (
-            <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
+            <CheckCircle2
+              className="size-4 shrink-0 text-success"
+              aria-hidden="true"
+            />
           )}
           <b className="font-medium text-foreground">
-            {trace.session.status === "incomplete"
-              ? "Trace collection stopped before the session closed"
+            {captureIncomplete
+              ? "Capture incomplete — analysis is paused"
               : collection.terminal_event_received
-                ? "Trace collection finalized"
+                ? collection.capture_state === "draining"
+                  ? "Call ended; pending events are still being projected"
+                  : "Trace collection finalized"
                 : "Trace collection is active"}
           </b>
           <span className="text-muted-foreground">
-            {collection.last_event_type
-              ? `Last event: ${collection.last_event_type}`
-              : "No events received yet"}
+            {captureIncomplete && collection.missing_ranges.length
+              ? `Missing event sequences: ${formatMissingRanges(collection.missing_ranges)}`
+              : collection.last_event_type
+                ? `Last event: ${collection.last_event_type}`
+                : "No events received yet"}
             {collection.last_event_at
               ? ` · ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" }).format(new Date(collection.last_event_at))}`
               : ""}
@@ -653,16 +724,22 @@ function TracePanelContent({
         </code>
       </section>
 
-      <section aria-label="Call state" className="grid gap-3 p-4 sm:grid-cols-3">
+      <section
+        aria-label="Call state"
+        className="grid gap-3 p-4 sm:grid-cols-3"
+      >
         <div className="rounded-lg border border-border bg-card p-3">
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Intent evidence
           </p>
           <p className="mt-1 text-sm font-semibold text-foreground">
-            {trace.session.intent ? trace.session.intent.replaceAll("_", " ") : "No routed intent captured"}
+            {trace.session.intent
+              ? trace.session.intent.replaceAll("_", " ")
+              : "No routed intent captured"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {trace.session.intent_source ?? "The agent did not emit intent evidence."}
+            {trace.session.intent_source ??
+              "The agent did not emit intent evidence."}
           </p>
         </div>
         <div className="rounded-lg border border-border bg-card p-3">
@@ -670,7 +747,9 @@ function TracePanelContent({
             Resolution
           </p>
           <p className="mt-1 text-sm font-semibold text-foreground">
-            {trace.session.outcome ? trace.session.outcome.replaceAll("_", " ") : "Outcome not observed"}
+            {trace.session.outcome
+              ? trace.session.outcome.replaceAll("_", " ")
+              : "Outcome not observed"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {trace.session.outcome_source ?? "No result event was received."}
@@ -681,10 +760,18 @@ function TracePanelContent({
             Voice quality
           </p>
           <p className="mt-1 text-sm font-semibold text-foreground">
-            {behavior.interruptions} interruptions · {behavior.dead_air} dead-air events
+            {behavior.interruptions} interruptions · {behavior.dead_air}{" "}
+            dead-air events
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {behavior.talk_over} talk-over · {behavior.corrections} corrections
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Dead air:{" "}
+            {deadAirSource?.source ?? "user speech end → agent playback start"}
+            {deadAirSource?.threshold_ms != null
+              ? ` · threshold ${(deadAirSource.threshold_ms / 1000).toFixed(1)} s`
+              : ""}
           </p>
         </div>
       </section>
@@ -717,7 +804,7 @@ function TracePanelContent({
           </div>
         </div>
         <div className="conversation-timeline-track">
-          {trace.turns.map((turn) => {
+          {visibleTurns.map((turn) => {
             const start = turnOffsetSeconds(turn, trace);
             const end = turn.ended_at
               ? Math.max(
@@ -740,7 +827,11 @@ function TracePanelContent({
                 onClick={() =>
                   activeRecording
                     ? seekToTurn(turn)
-                    : revealEvidence({ event_id: null, span_id: null, turn_id: turn.id })
+                    : revealEvidence({
+                        event_id: null,
+                        span_id: null,
+                        turn_id: turn.id,
+                      })
                 }
               />
             );
@@ -782,8 +873,8 @@ function TracePanelContent({
                     })
                   }
                 />
-            );
-          })}
+              );
+            })}
           {observedTurnGaps.map((gap) => (
             <button
               aria-label={`Seek to observed dead air at ${formatClock(gap.start)}`}
@@ -815,7 +906,11 @@ function TracePanelContent({
         className="border-t border-border p-5"
       >
         <TabsList variant="line" className="mb-5 gap-5 p-0">
-          {activeRecording ? <TabsTrigger value="playback" className="px-0">Playback</TabsTrigger> : null}
+          {activeRecording ? (
+            <TabsTrigger value="playback" className="px-0">
+              Playback
+            </TabsTrigger>
+          ) : null}
           <TabsTrigger value="transcript" className="px-0">
             Transcript
           </TabsTrigger>
@@ -875,10 +970,10 @@ function TracePanelContent({
 
         <TabsContent value="transcript">
           <section className="flex flex-col gap-2" aria-label="Transcript">
-            {trace.turns.length ? (
-              trace.turns.map((turn, index) => {
+            {visibleTurns.length ? (
+              visibleTurns.map((turn, index) => {
                 const offset = turnOffsetSeconds(turn, trace);
-                const nextTurn = trace.turns[index + 1];
+                const nextTurn = visibleTurns[index + 1];
                 const active = Boolean(
                   activeRecording &&
                   playheadSeconds >= offset &&
@@ -897,14 +992,18 @@ function TracePanelContent({
                     onClick={() =>
                       activeRecording
                         ? seekToTurn(turn)
-                        : revealEvidence({ event_id: null, span_id: null, turn_id: turn.id })
+                        : revealEvidence({
+                            event_id: null,
+                            span_id: null,
+                            turn_id: turn.id,
+                          })
                     }
                   >
                     <b className="text-xs font-semibold tracking-wide text-primary uppercase">
                       {turn.speaker} · {formatLatency(offset * 1000)}
                     </b>
                     <span className="text-sm text-foreground">
-                      {turn.transcript ?? "Transcript omitted or not captured"}
+                      {turn.transcript}
                     </span>
                   </button>
                 );
@@ -936,6 +1035,101 @@ function TracePanelContent({
               </div>
             ))}
           </section>
+          <section className="grid gap-3" aria-labelledby="tool-calls-heading">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <H3 id="tool-calls-heading">Tool calls</H3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Exact arguments and results captured from agent execution.
+                </p>
+              </div>
+              <div
+                className="flex flex-wrap gap-2"
+                role="status"
+                aria-atomic="true"
+              >
+                <Badge variant="secondary">{toolSummary.total} total</Badge>
+                <Badge variant="success">
+                  {toolSummary.succeeded} succeeded
+                </Badge>
+                {toolSummary.failed ? (
+                  <Badge variant="destructive">
+                    {toolSummary.failed} failed
+                  </Badge>
+                ) : null}
+              </div>
+            </div>
+            {toolCalls.length ? (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {toolCalls.map((tool) => (
+                  <article
+                    className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-4"
+                    id={`span-${tool.id}`}
+                    key={tool.id}
+                  >
+                    <header className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Wrench aria-hidden="true" size={16} />
+                        <div className="min-w-0">
+                          <b className="block truncate text-sm text-foreground">
+                            {tool.name}
+                          </b>
+                          <code className="block truncate text-xs text-muted-foreground">
+                            {tool.call_id}
+                          </code>
+                        </div>
+                      </div>
+                      <Badge
+                        variant={
+                          tool.status === "ok"
+                            ? "success"
+                            : tool.status === "unset"
+                              ? "secondary"
+                              : "destructive"
+                        }
+                      >
+                        {tool.status}
+                      </Badge>
+                    </header>
+                    <dl className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <dt className="text-muted-foreground">Protocol</dt>
+                        <dd className="font-medium text-foreground">
+                          {tool.protocol ?? "function"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Latency</dt>
+                        <dd className="font-medium text-foreground">
+                          {formatLatency(tool.duration_ms)}
+                        </dd>
+                      </div>
+                    </dl>
+                    <details className="rounded-md border border-border bg-muted/30 p-3">
+                      <summary className="cursor-pointer text-xs font-medium text-foreground">
+                        Input arguments
+                      </summary>
+                      <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                        {JSON.stringify(tool.input ?? {}, null, 2)}
+                      </pre>
+                    </details>
+                    <details className="rounded-md border border-border bg-muted/30 p-3">
+                      <summary className="cursor-pointer text-xs font-medium text-foreground">
+                        Returned result
+                      </summary>
+                      <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                        {JSON.stringify(tool.output ?? {}, null, 2)}
+                      </pre>
+                    </details>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                No tool calls were captured for this session.
+              </p>
+            )}
+          </section>
           {primaryFinding ? (
             <section
               className="grid gap-4 rounded-xl border border-destructive/20 bg-destructive-soft p-4 text-sm text-foreground md:grid-cols-[minmax(0,1fr)_190px]"
@@ -947,7 +1141,7 @@ function TracePanelContent({
                 </div>
                 <strong className="block text-base">
                   {certaintyLabel(primaryFinding.certainty)}:{" "}
-                  {primaryFinding.statement}
+                  {findingStatement(primaryFinding.statement)}
                 </strong>
                 {primaryFinding.confidence !== null &&
                 primaryFinding.certainty === "inferred_contributing_factor" ? (
@@ -994,7 +1188,8 @@ function TracePanelContent({
                 <div className="flex items-center gap-2">
                   <Badge
                     variant={
-                      finding.severity === "high" || finding.severity === "critical"
+                      finding.severity === "high" ||
+                      finding.severity === "critical"
                         ? "destructive"
                         : finding.severity === "medium"
                           ? "warning"
@@ -1010,7 +1205,7 @@ function TracePanelContent({
                   ) : null}
                 </div>
                 <span className="text-sm text-foreground">
-                  {finding.statement}
+                  {findingStatement(finding.statement)}
                 </span>
                 {finding.evidence.length ? (
                   <div className="flex flex-wrap gap-2 pt-1">

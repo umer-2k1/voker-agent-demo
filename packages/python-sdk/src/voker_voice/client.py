@@ -4,6 +4,7 @@ import gzip
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -47,6 +48,7 @@ class VokerVoice:
         session_flush_timeout: float = 0.25,
         diagnostics: bool = False,
         session_log_dir: str | None = None,
+        outbox_path: str | Path | None = None,
         event_sink: EventSink | None = None,
     ) -> None:
         self.api_key = api_key or os.getenv("VOKER_API_KEY")
@@ -89,6 +91,7 @@ class VokerVoice:
                 endpoint=self.endpoint,
                 api_key=self.api_key,
                 diagnostic_hook=self._on_export_diagnostic,
+                spool_path=outbox_path,
             )
         atexit.register(self.close)
 

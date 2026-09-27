@@ -58,8 +58,12 @@ voker-voice-api create-ingest-key --label "Local API testing"
 ```bash
 source venv/bin/activate
 uvicorn voker_voice_api.main:app --app-dir apps/api/src --reload --port 8001
+while true; do voker-voice-api worker-once; sleep 2; done
 pnpm dev:web
 ```
+
+Run those commands in separate terminals. Ingestion first commits immutable raw
+events; the worker then projects complete, ordered traces and starts analysis.
 
 For Google sign-in locally, configure the Google redirect URI as
 `http://localhost:8001/auth/google/callback` and set

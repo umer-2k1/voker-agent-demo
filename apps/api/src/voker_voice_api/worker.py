@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from voker_voice_api.analysis import run_deterministic_analysis
+from voker_voice_api.capture import project_pending_captures
 from voker_voice_api.config import get_settings
 from voker_voice_api.connectors import normalize_retell, normalize_vapi
 from voker_voice_api.database import SessionLocal
@@ -15,16 +16,16 @@ from voker_voice_api.ingestion import IngestContext, enqueue_completion_analysis
 from voker_voice_api.jobs import claim_jobs, complete_job, fail_job, release_expired_leases
 from voker_voice_api.models import (
     Environment,
+    Event,
     Integration,
     Job,
     Recording,
-    Event,
-    Session as VoiceSession,
     WebhookDelivery,
     WebhookReceipt,
 )
-from voker_voice_api.session_logs import write_session_log
+from voker_voice_api.models import Session as VoiceSession
 from voker_voice_api.semantic import evaluate_session
+from voker_voice_api.session_logs import write_session_log
 
 
 def worker_id() -> str:
@@ -63,7 +64,10 @@ def reconcile_stale_sessions(
     current = now or datetime.now(UTC)
     cutoff = current - timedelta(seconds=get_settings().session_stale_after_seconds)
     latest_event = (
-        select(Event.session_id.label("session_id"), func.max(Event.received_at).label("received_at"))
+        select(
+            Event.session_id.label("session_id"),
+            func.max(Event.received_at).label("received_at"),
+        )
         .group_by(Event.session_id)
         .subquery()
     )
@@ -201,9 +205,10 @@ def run_once(*, limit: int = 10) -> int:
     with SessionLocal.begin() as db:
         release_expired_leases(db)
         reconcile_stale_sessions(db)
+        projected = project_pending_captures(db, worker_id=identifier, limit=limit)
         jobs = claim_jobs(db, worker_id=identifier, limit=limit)
         job_ids = [job.id for job in jobs]
-    processed = 0
+    processed = projected
     for job_id in job_ids:
         with SessionLocal.begin() as db:
             job = db.get(Job, job_id)

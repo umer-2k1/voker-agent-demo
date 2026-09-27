@@ -25,7 +25,7 @@ def test_dashboard_origins_allow_session_credentials() -> None:
 
 def test_readiness_reports_durable_queue_backlog() -> None:
     db = MagicMock()
-    db.scalar.return_value = 3
+    db.scalar.side_effect = [3, 2, 1]
     app.dependency_overrides[get_db] = lambda: db
     try:
         response = TestClient(app).get("/health/ready")
@@ -33,4 +33,9 @@ def test_readiness_reports_durable_queue_backlog() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ready", "pending_jobs": 3}
+    assert response.json() == {
+        "status": "ready",
+        "pending_jobs": 3,
+        "pending_capture_sessions": 2,
+        "incomplete_capture_sessions": 1,
+    }

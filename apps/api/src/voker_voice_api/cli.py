@@ -47,7 +47,8 @@ def main() -> None:
     )
     reconcile_parser.add_argument("--session-id", help="Limit reconciliation to one session UUID")
     log_parser = subparsers.add_parser(
-        "export-session-log", help="Backfill a session diagnostic JSONL file from persisted evidence"
+        "export-session-log",
+        help="Backfill a session diagnostic JSONL file from persisted evidence",
     )
     log_parser.add_argument("--session-id", required=True, help="Session UUID")
     args = parser.parse_args()
@@ -65,13 +66,15 @@ def main() -> None:
             print(f"Expired {expire_recordings(db)} recordings")
     if args.command == "reconcile-sessions":
         with SessionLocal.begin() as db:
+            session_id = uuid.UUID(args.session_id) if args.session_id else None
+            reconciled = reconcile_stale_sessions(db, session_id=session_id)
             print(
-                "Reconciled "
-                f"{reconcile_stale_sessions(db, session_id=uuid.UUID(args.session_id) if args.session_id else None)} stalled sessions"
+                f"Reconciled {reconciled} stalled sessions"
             )
     if args.command == "export-session-log":
         with SessionLocal.begin() as db:
-            print(f"Wrote {backfill_session_log(db, args.session_id)} historical events to session log")
+            count = backfill_session_log(db, args.session_id)
+            print(f"Wrote {count} historical events to session log")
 
 
 if __name__ == "__main__":

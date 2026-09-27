@@ -52,6 +52,13 @@ class VoiceSession:
         self._token: contextvars.Token[VoiceSession | None] | None = None
         self._sequence = 0
 
+    def completion_manifest(self) -> dict[str, int]:
+        terminal_sequence = self._sequence + 1
+        return {
+            "expected_last_sequence": terminal_sequence,
+            "generated_event_count": terminal_sequence,
+        }
+
     def __enter__(self) -> "VoiceSession":
         self._token = _active_session.set(self)
         self.emit("session.started", status="ok", attributes=self.metadata)
@@ -61,7 +68,12 @@ class VoiceSession:
         status = status_for_exception(exc)
         if exc is not None:
             self.emit("session.error", status=status, error=self._error_payload(exc))
-        self.emit("session.ended", status=status, error=self._error_payload(exc) if exc else None)
+        self.emit(
+            "session.ended",
+            status=status,
+            error=self._error_payload(exc) if exc else None,
+            attributes=self.completion_manifest(),
+        )
         if self._token is not None:
             _active_session.reset(self._token)
             self._token = None

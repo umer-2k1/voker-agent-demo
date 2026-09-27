@@ -19,3 +19,4 @@ coverage/
 artifacts/dashboard-snapshots/
 /logs/sessions/*.jsonl
 /logs/sessions/*.sdk.jsonl
+.voker/

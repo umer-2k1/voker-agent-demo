@@ -79,7 +79,12 @@ export type Analytics = {
     session_ids: string[];
   }>;
   rates: Record<
-    "resolution" | "correction" | "escalation" | "abandonment" | "error" | "handoff",
+    | "resolution"
+    | "correction"
+    | "escalation"
+    | "abandonment"
+    | "error"
+    | "handoff",
     number | null
   >;
   metric_coverage: Record<
@@ -155,6 +160,14 @@ export type Trace = {
     last_received_at: string | null;
     terminal_event_received: boolean;
     diagnostic_log: string;
+    capture_state:
+      "receiving" | "draining" | "complete" | "incomplete" | "recovering";
+    highest_seen_sequence: number | null;
+    highest_contiguous_sequence: number | null;
+    expected_last_sequence: number | null;
+    missing_ranges: number[][];
+    raw_event_count: number;
+    projected_event_count: number;
   };
   event_page: SessionPage;
   voice_behavior: {
@@ -164,6 +177,33 @@ export type Trace = {
     corrections: number;
     abandonment: number;
   };
+  voice_behavior_sources?: Record<
+    "interruptions" | "talk_over" | "dead_air" | "corrections" | "abandonment",
+    {
+      source: string;
+      threshold_ms: number | null;
+      method: string;
+    }
+  >;
+  tool_summary: {
+    total: number;
+    succeeded: number;
+    failed: number;
+  };
+  tool_calls: Array<{
+    id: string;
+    call_id: string;
+    name: string;
+    protocol: string | null;
+    status: string;
+    started_at: string;
+    ended_at: string | null;
+    duration_ms: number | null;
+    turn_id: string | null;
+    agent_run_id: string | null;
+    input: Record<string, unknown> | null;
+    output: Record<string, unknown> | null;
+  }>;
   events: Array<{
     id: string;
     event_id: string;

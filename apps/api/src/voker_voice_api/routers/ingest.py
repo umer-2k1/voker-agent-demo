@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import ClientDisconnect
 
 from voker_voice_api.auth import authenticate_ingest_key, raw_ingest_key, require_ingest_context
+from voker_voice_api.capture import accept_event_batch
 from voker_voice_api.config import get_settings
 from voker_voice_api.connectors import normalize_retell, normalize_vapi, verify_retell_signature
 from voker_voice_api.database import get_db
@@ -103,7 +104,7 @@ async def create_event_batch(
         context = authenticate_ingest_key(
             raw_ingest_key(request, request.headers.get("x-voker-api-key")), db
         )
-        response = ingest_batch(db, context, batch.events)
+        response = accept_event_batch(db, context, batch.events)
         db.commit()
         return response
 

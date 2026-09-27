@@ -50,6 +50,20 @@ Backend URLs:
 - OpenAPI documentation: <http://localhost:8001/docs>
 - Health check: <http://localhost:8001/health>
 
+### Start the projection and analysis worker
+
+Open another terminal in the repository root. Event batches are acknowledged
+after the raw inbox commit; this worker projects them into sessions, transcripts,
+spans, and findings:
+
+```bash
+source venv/bin/activate
+while true; do voker-voice-api worker-once; sleep 2; done
+```
+
+`GET /health/ready` reports pending capture sessions separately from analysis
+jobs, so a stopped worker is visible without risking event loss.
+
 ### Connect Voker through MCP
 
 Voker exposes a read-only Streamable HTTP MCP endpoint at

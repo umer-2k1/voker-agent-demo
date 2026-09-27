@@ -60,6 +60,8 @@ def test_one_call_observer_owns_lifecycle_and_context_metadata() -> None:
     )
     assert event_types(sink)[-1] == "session.ended"
     assert sink.events[-1]["status"] == "ok"
+    assert sink.events[-1]["attributes"]["expected_last_sequence"] == sink.events[-1]["sequence"]
+    assert sink.events[-1]["attributes"]["generated_event_count"] == len(sink.events)
     assert fake.handlers == {}
 
 
@@ -312,7 +314,9 @@ def test_assistant_conversation_item_uses_a_distinct_agent_transcript_turn() -> 
         "user_state_changed",
         {"old_state": "listening", "new_state": "speaking", "created_at": 100.0},
     )
-    user_turn_id = next(event["turn_id"] for event in sink.events if event["event_type"] == "turn.started")
+    user_turn_id = next(
+        event["turn_id"] for event in sink.events if event["event_type"] == "turn.started"
+    )
     fake.emit(
         "conversation_item_added",
         {
@@ -326,7 +330,9 @@ def test_assistant_conversation_item_uses_a_distinct_agent_transcript_turn() -> 
         },
     )
 
-    assistant_message = next(event for event in sink.events if event["event_type"] == "assistant.message")
+    assistant_message = next(
+        event for event in sink.events if event["event_type"] == "assistant.message"
+    )
     assert assistant_message["turn_id"] != user_turn_id
     assert assistant_message["attributes"]["speaker"] == "agent"
     assert assistant_message["attributes"]["transcript"] == "Your appointment is booked."
@@ -380,6 +386,38 @@ def test_false_interruption_is_not_reported_as_real_interruption() -> None:
         if event.get("attributes", {}).get("custom_name") == "livekit.false_interruption"
     )
     assert event["event_type"] == "custom"
+
+
+def test_speech_created_without_provider_metrics_does_not_create_orphan_tts_span() -> None:
+    sink = MemoryEventSink()
+    fake = FakeAgentSession()
+    client = VokerVoice(event_sink=sink, enabled=True)
+    observe_livekit(fake, agent="agent", client=client, session_id="call-1")
+    speech = {"id": "speech-without-metrics", "interrupted": False}
+    fake.current_speech = speech
+
+    fake.emit(
+        "speech_created",
+        {
+            "created_at": 10.0,
+            "speech_handle": speech,
+            "source": "generate_reply",
+            "user_initiated": False,
+        },
+    )
+    fake.emit(
+        "agent_state_changed",
+        {"old_state": "thinking", "new_state": "speaking", "created_at": 10.1},
+    )
+    fake.emit(
+        "agent_state_changed",
+        {"old_state": "speaking", "new_state": "listening", "created_at": 10.5},
+    )
+    fake.emit("close", {"created_at": 11.0, "reason": "task_completed"})
+
+    assert not any(event_type.startswith("tts.") for event_type in event_types(sink))
+    assert "playback.started" in event_types(sink)
+    assert "playback.completed" in event_types(sink)
 
 
 def test_overlap_and_user_speech_during_playback_are_evidence_backed() -> None:

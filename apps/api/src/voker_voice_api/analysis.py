@@ -269,6 +269,29 @@ def event_finding_specs(events: list[Event]) -> list[FindingSpec]:
     grouped: dict[str, list[Event]] = {}
     for event in events:
         grouped.setdefault(event.event_type, []).append(event)
+
+    for event in events:
+        attributes = event.payload.get("attributes", {})
+        if attributes.get("custom_name") != "calendar.booking_mismatch":
+            continue
+        requested = f"{attributes.get('requested_day')} at {attributes.get('requested_time')}"
+        booked = f"{attributes.get('booked_day')} at {attributes.get('booked_time')}"
+        specs.append(
+            _condition(
+                rule_id=f"calendar-booking-mismatch:{event.id}",
+                finding_type="incorrect_booking",
+                severity="high",
+                statement=(
+                    f"Confirmed demo condition: the caller requested {requested}, "
+                    f"but the calendar booked {booked}."
+                ),
+                entity_type="event",
+                entity_id=event.id,
+                observed_value={"requested": requested, "booked": booked},
+                threshold="requested slot equals booked slot",
+                certainty="confirmed_execution_fact",
+            )
+        )
     for event_type, finding_type, label in (
         ("voice.interruption", "interruption", "caller interruption"),
         ("voice.talk_over", "talk_over", "talk-over"),

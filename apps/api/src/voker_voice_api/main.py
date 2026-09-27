@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from voker_voice_api.config import get_settings
 from voker_voice_api.database import get_db
 from voker_voice_api.mcp_server import create_mcp_app
-from voker_voice_api.models import Job
+from voker_voice_api.models import Job, SessionCapture
 from voker_voice_api.routers.account import router as account_router
 from voker_voice_api.routers.dashboard import router as dashboard_router
 from voker_voice_api.routers.ingest import router as ingest_router
@@ -99,12 +99,27 @@ def create_app() -> FastAPI:
             pending_jobs = db.scalar(
                 select(func.count()).select_from(Job).where(Job.state.in_(("pending", "retry")))
             )
+            pending_capture_sessions = db.scalar(
+                select(func.count())
+                .select_from(SessionCapture)
+                .where(SessionCapture.projected_generation < SessionCapture.generation)
+            )
+            incomplete_capture_sessions = db.scalar(
+                select(func.count())
+                .select_from(SessionCapture)
+                .where(SessionCapture.state == "incomplete")
+            )
         except SQLAlchemyError as error:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Database is unavailable",
             ) from error
-        return {"status": "ready", "pending_jobs": pending_jobs or 0}
+        return {
+            "status": "ready",
+            "pending_jobs": pending_jobs or 0,
+            "pending_capture_sessions": pending_capture_sessions or 0,
+            "incomplete_capture_sessions": incomplete_capture_sessions or 0,
+        }
 
     # This catch-all mount must stay after API and health routes.
     app.mount("/", mcp_mount)

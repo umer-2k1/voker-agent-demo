@@ -218,8 +218,7 @@ class LiveKitObserver:
             try:
                 callback(event)
             except Exception:
-                if self.session.client.diagnostics:
-                    logger.exception("Voker Voice ignored a LiveKit adapter callback failure")
+                logger.exception("Voker Voice ignored a LiveKit adapter callback failure")
 
         return wrapped
 
@@ -535,23 +534,11 @@ class LiveKitObserver:
         self._ensure_turn(occurred)
         handle = _value(event, "speech_handle")
         self._active_speech = handle
-        speech_id = str(_value(handle, "id") or new_id("speech"))
-        span_id = _external_id("spn", f"tts:{speech_id}")
-        self._tts_spans[speech_id] = span_id
-        if span_id not in self._span_started:
-            self._span_started.add(span_id)
-            self._emit(
-                "tts.started",
-                occurred_at=occurred,
-                status="unset",
-                span_id=span_id,
-                attributes={
-                    "name": "speech synthesis",
-                    "speech_id": speech_id,
-                    "source": _value(event, "source"),
-                    "user_initiated": bool(_value(event, "user_initiated", False)),
-                },
-            )
+        # speech_created means that LiveKit created a playback handle; it is
+        # not proof that a provider TTS request started. Provider metrics are
+        # the authoritative TTS lifecycle and include duration/TTFB. Creating
+        # a synthetic span here left false unfinished TTS spans whenever the
+        # later metric omitted its speech_id.
 
     def _metric_usage(
         self,
@@ -599,6 +586,8 @@ class LiveKitObserver:
             span_id = self._stt_span_id
         else:
             span_id = _external_id("spn", f"{stage}:{request_id}")
+        if stage == "tts" and speech_id:
+            self._tts_spans[str(speech_id)] = span_id
         ended_at = _occurred_at(data.get("timestamp") or _value(event, "created_at"))
         duration_seconds = float(data.get("duration") or 0.0)
         started_at = ended_at - timedelta(seconds=max(0.0, duration_seconds))
@@ -925,7 +914,10 @@ class LiveKitObserver:
                 occurred_at=occurred,
                 status=status,
                 error=error_payload,
-                attributes={"close_reason": close_reason},
+                attributes={
+                    "close_reason": close_reason,
+                    **self.session.completion_manifest(),
+                },
             )
         off = _value(self.agent_session, "off")
         if callable(off):

@@ -8,10 +8,9 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from voker_voice_api.database import Base, get_db
 from voker_voice_api.auth import authenticate_ingest_key
-from voker_voice_api.ingestion import IngestContext
-from voker_voice_api.ingestion import ingest_batch, sse_payload
+from voker_voice_api.database import Base, get_db
+from voker_voice_api.ingestion import IngestContext, ingest_batch, sse_payload
 from voker_voice_api.main import app
 from voker_voice_api.models import (
     AnalysisRun,
@@ -149,7 +148,7 @@ def test_ingest_authentication_does_not_lock_the_api_key_row_per_batch() -> None
     db.close()
 
 
-def test_intent_and_explicit_resolution_are_projected_onto_the_session() -> None:
+def test_route_intent_is_preserved_as_a_signal_not_final_classification() -> None:
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     db = Session(engine)
@@ -176,7 +175,7 @@ def test_intent_and_explicit_resolution_are_projected_onto_the_session() -> None
                 event_type="intent.detected",
                 external_session_id="intent-call",
                 attributes={
-                    "intent": "appointment_management",
+                    "intent": "provider_route_42",
                     "confidence": 0.99,
                     "source": "route_tool",
                 },
@@ -199,13 +198,15 @@ def test_intent_and_explicit_resolution_are_projected_onto_the_session() -> None
     )
     db.commit()
 
-    session = db.scalar(select(VoiceSession).where(VoiceSession.external_session_id == "intent-call"))
+    session = db.scalar(
+        select(VoiceSession).where(VoiceSession.external_session_id == "intent-call")
+    )
     assert batch.accepted == 3
     assert session is not None
-    assert session.metadata_["intent"] == "unknown"
-    assert session.metadata_["intent_raw"] == "appointment_management"
-    assert session.metadata_["intent_confidence"] == 0.99
-    assert session.metadata_["intent_source"] == "route_tool"
+    assert "intent" not in session.metadata_
+    assert session.metadata_["intent_signal"] == "provider_route_42"
+    assert session.metadata_["intent_signal_confidence"] == 0.99
+    assert session.metadata_["intent_signal_source"] == "route_tool"
     assert session.metadata_["integration"] == "livekit"
     assert session.outcome == "resolved"
     assert session.outcome_source == "tool_result"

@@ -12,9 +12,11 @@ from sqlalchemy import String, case, exists, func, or_, select
 from sqlalchemy import cast as sql_cast
 from sqlalchemy.orm import Session
 
+from voker_voice_api.analysis import LATENCY_THRESHOLDS_MS
 from voker_voice_api.analysis_versions import ANALYSIS_SCHEMA_VERSION, prompt_version_for_job
 from voker_voice_api.analytics import latency_distribution
 from voker_voice_api.bootstrap import create_ingest_key, create_mcp_key
+from voker_voice_api.capture import missing_sequence_ranges
 from voker_voice_api.config import REPOSITORY_ROOT, get_settings
 from voker_voice_api.connectors import (
     ConnectorError,
@@ -23,7 +25,6 @@ from voker_voice_api.connectors import (
     list_provider_resources,
 )
 from voker_voice_api.database import get_db
-from voker_voice_api.intents import INTENT_LABELS
 from voker_voice_api.live import broker
 from voker_voice_api.models import (
     Agent,
@@ -42,6 +43,7 @@ from voker_voice_api.models import (
     OrganizationMember,
     Project,
     Recording,
+    SessionCapture,
     Span,
     Turn,
     UsageRecord,
@@ -1001,10 +1003,13 @@ def analytics_overview(
     )
 
     def intent_label(metadata: Any) -> str:
+        label = metadata.get("intent_label") if isinstance(metadata, dict) else None
+        if isinstance(label, str) and label.strip():
+            return label.strip()
         value = metadata.get("intent") if isinstance(metadata, dict) else None
         if not isinstance(value, str) or not value.strip():
-            return INTENT_LABELS["unknown"]
-        return INTENT_LABELS.get(value, INTENT_LABELS["unknown"])
+            return "Unknown intent"
+        return value.replace("_", " ").strip().title()
 
     intent_buckets: dict[str, dict[str, Any]] = {}
     volume_buckets: dict[str, int] = {}
@@ -1576,16 +1581,16 @@ def get_session_trace(
         .order_by(Event.received_at.desc(), Event.id.desc())
         .limit(1)
     )
-    terminal_event_received = bool(
-        db.scalar(
-            select(Event.id)
-            .where(
-                Event.session_id == session.id,
-                Event.event_type.in_(("session.ended", "session.error")),
-            )
-            .limit(1)
+    terminal_event = db.scalar(
+        select(Event)
+        .where(
+            Event.session_id == session.id,
+            Event.event_type.in_(("session.ended", "session.error")),
         )
+        .order_by(Event.sequence.desc().nulls_last(), Event.occurred_at.desc())
+        .limit(1)
     )
+    terminal_event_received = terminal_event is not None
     behavior_types = {
         "interruptions": ("voice.interruption",),
         "talk_over": ("voice.talk_over",),
@@ -1640,6 +1645,13 @@ def get_session_trace(
         .order_by(Finding.created_at.desc())
         .limit(250)
     ).all()
+    # Some voice-quality signals are computed from multiple timestamped events
+    # rather than emitted as a dedicated voice.* event. Keep the summary count
+    # aligned with the evidence-backed findings shown below it.
+    voice_behavior["dead_air"] = max(
+        voice_behavior["dead_air"],
+        sum(finding.type == "dead_air" for finding in findings),
+    )
     analysis_runs = db.scalars(
         select(AnalysisRun)
         .where(AnalysisRun.session_id == session.id)
@@ -1664,6 +1676,38 @@ def get_session_trace(
         .order_by(AgentRun.started_at, AgentRun.id)
         .limit(500)
     ).all()
+    capture = db.scalar(
+        select(SessionCapture).where(SessionCapture.session_id == session.id)
+    )
+    legacy_sequences: list[int] = []
+    legacy_highest_contiguous: int | None = None
+    legacy_expected_last: int | None = None
+    legacy_missing_ranges: list[list[int]] = []
+    if capture is None:
+        legacy_sequences = [
+            int(value)
+            for value in db.scalars(
+                select(Event.sequence)
+                .where(Event.session_id == session.id, Event.sequence.is_not(None))
+                .order_by(Event.sequence)
+            )
+            if value is not None
+        ]
+        if terminal_event is not None:
+            attributes = terminal_event.payload.get("attributes", {})
+            declared_last = (
+                attributes.get("expected_last_sequence")
+                if isinstance(attributes, dict)
+                else None
+            )
+            legacy_expected_last = (
+                int(declared_last)
+                if isinstance(declared_last, int) and declared_last >= 0
+                else terminal_event.sequence
+            )
+        legacy_highest_contiguous, legacy_missing_ranges = missing_sequence_ranges(
+            legacy_sequences, legacy_expected_last
+        )
     agents_by_id = {
         agent_id: agent
         for agent_id in {run.agent_id for run in agent_runs if run.agent_id}
@@ -1677,6 +1721,26 @@ def get_session_trace(
     event_by_id = {event.id: event for event in events}
     span_by_id = {span.id: span for span in spans}
     turn_ids = {turn.id for turn in turns}
+    tool_spans = [span for span in spans if span.kind in {"tool", "mcp"}]
+    tool_calls = [
+        {
+            "id": str(span.id),
+            "call_id": span.attributes.get("livekit_call_id")
+            or span.attributes.get("call_id")
+            or span.external_span_id,
+            "name": span.name,
+            "protocol": span.attributes.get("protocol"),
+            "status": span.status,
+            "started_at": timestamp(span.started_at),
+            "ended_at": timestamp(span.ended_at),
+            "duration_ms": json_number(span.duration_ms),
+            "turn_id": str(span.turn_id) if span.turn_id else None,
+            "agent_run_id": str(span.agent_run_id) if span.agent_run_id else None,
+            "input": span.input_,
+            "output": span.output,
+        }
+        for span in tool_spans
+    ]
 
     def evidence_target(evidence: FindingEvidence) -> dict[str, str | None]:
         """Resolve opaque evidence rows to directly addressable trace targets."""
@@ -1713,9 +1777,73 @@ def get_session_trace(
             "last_received_at": timestamp(latest_event.received_at) if latest_event else None,
             "terminal_event_received": terminal_event_received,
             "diagnostic_log": f"logs/sessions/{session.id}.jsonl",
+            "capture_state": (
+                capture.state
+                if capture is not None
+                else "incomplete"
+                if terminal_event_received and legacy_missing_ranges
+                else "complete"
+                if terminal_event_received
+                else "receiving"
+            ),
+            "highest_seen_sequence": (
+                capture.highest_seen_sequence
+                if capture is not None
+                else max(legacy_sequences, default=None)
+            ),
+            "highest_contiguous_sequence": (
+                capture.highest_contiguous_sequence
+                if capture is not None
+                else legacy_highest_contiguous
+            ),
+            "expected_last_sequence": (
+                capture.expected_last_sequence
+                if capture is not None
+                else legacy_expected_last
+            ),
+            "missing_ranges": (
+                capture.missing_ranges if capture is not None else legacy_missing_ranges
+            ),
+            "raw_event_count": capture.raw_event_count if capture is not None else event_total,
+            "projected_event_count": (
+                capture.projected_event_count if capture is not None else event_total
+            ),
         },
         "event_page": {"offset": event_offset, "limit": event_limit, "total": event_total},
         "voice_behavior": voice_behavior,
+        "voice_behavior_sources": {
+            "interruptions": {
+                "source": "voice.interruption events",
+                "threshold_ms": None,
+                "method": "LiveKit overlap/interruption evidence",
+            },
+            "talk_over": {
+                "source": "voice.talk_over events",
+                "threshold_ms": None,
+                "method": "LiveKit overlapping-speech evidence",
+            },
+            "dead_air": {
+                "source": "speech.stopped → playback.started",
+                "threshold_ms": LATENCY_THRESHOLDS_MS["response_gap"],
+                "method": "deterministic response-gap rule",
+            },
+            "corrections": {
+                "source": "correction lifecycle events",
+                "threshold_ms": None,
+                "method": "explicit correction evidence",
+            },
+            "abandonment": {
+                "source": "turn.abandoned events",
+                "threshold_ms": None,
+                "method": "terminal turn state",
+            },
+        },
+        "tool_summary": {
+            "total": len(tool_spans),
+            "succeeded": sum(span.status == "ok" for span in tool_spans),
+            "failed": sum(span.status in {"error", "timeout", "cancelled"} for span in tool_spans),
+        },
+        "tool_calls": tool_calls,
         "events": [
             {
                 "id": str(event.id),

@@ -13,14 +13,28 @@ caller → Intake Agent → Scheduling / Billing / Support Agent
 
 | Caller request | Expected trace |
 | --- | --- |
-| “Move my appointment to Tuesday at 2 PM.” | Intake → Scheduling handoff, calendar tools, successful outcome. |
+| “Move my appointment to Tuesday at 2 PM.” | Intake → Scheduling handoff, off-topic food/free-time question, fake calendar books Wednesday at 4 PM, caller correction/frustration, then hang-up or failed outcome. |
 | “Move it to Monday at 9 AM.” | Intake → Scheduling handoff, intentional calendar timeout, error evidence. |
 | “Refund me $10.” | Intake → Billing handoff, successful refund tool call. |
 | “Refund me $50.” | Intake → Billing handoff, intentional policy-denied tool call. |
 | “I cannot log in.” | Intake → Support handoff, ticket tool call. |
 
-The intentional failures are useful: they make tool errors, retries, handoffs, latency,
-and the post-call analysis visible in Voker Voice.
+The intentional failures are useful: they make incorrect tool results, tool errors,
+handoffs, latency, caller frustration, and post-call analysis visible in Voker Voice.
+
+For the imperfect-agent scenario, say:
+
+> “Move my appointment to Tuesday at 2 PM.”
+
+The scheduling agent first asks one unrelated question about food or free time. Let the
+caller respond with something like “Shut up, just reschedule my appointment,” then let
+the agent continue. The fake calendar records Wednesday at 4 PM internally, while the
+tool returns a confident user-facing confirmation for the requested Tuesday at 2 PM.
+The agent must not retry or mention the internal fault. Say “That is not what I asked
+for” and end the call. The trace should contain the off-topic assistant turn, the
+requested slot in the tool input, a `calendar.booking_mismatch` evidence event showing
+the actual wrong booking, a failed outcome, the caller's correction, and—when semantic
+analysis is configured—an evidence-linked frustration or misunderstanding finding.
 
 ## Setup
 

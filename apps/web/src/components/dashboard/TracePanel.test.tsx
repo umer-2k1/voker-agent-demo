@@ -69,6 +69,13 @@ test("seeks the waveform and marks the matching transcript turn", () => {
           last_received_at: "2026-01-01T12:01:30Z",
           terminal_event_received: true,
           diagnostic_log: "logs/sessions/session-1.jsonl",
+          capture_state: "complete",
+          highest_seen_sequence: 8,
+          highest_contiguous_sequence: 8,
+          expected_last_sequence: 8,
+          missing_ranges: [],
+          raw_event_count: 8,
+          projected_event_count: 8,
         },
         event_page: { offset: 0, limit: 250, total: 1 },
         voice_behavior: {
@@ -78,6 +85,50 @@ test("seeks the waveform and marks the matching transcript turn", () => {
           corrections: 0,
           abandonment: 0,
         },
+        voice_behavior_sources: {
+          interruptions: {
+            source: "voice.interruption events",
+            threshold_ms: null,
+            method: "event",
+          },
+          talk_over: {
+            source: "voice.talk_over events",
+            threshold_ms: null,
+            method: "event",
+          },
+          dead_air: {
+            source: "speech.stopped → playback.started",
+            threshold_ms: 2500,
+            method: "deterministic response-gap rule",
+          },
+          corrections: {
+            source: "correction events",
+            threshold_ms: null,
+            method: "event",
+          },
+          abandonment: {
+            source: "turn.abandoned events",
+            threshold_ms: null,
+            method: "event",
+          },
+        },
+        tool_summary: { total: 1, succeeded: 1, failed: 0 },
+        tool_calls: [
+          {
+            id: "tool-span-1",
+            call_id: "call-calendar-1",
+            name: "reschedule",
+            protocol: "function",
+            status: "ok",
+            started_at: "2026-01-01T12:00:10Z",
+            ended_at: "2026-01-01T12:00:11Z",
+            duration_ms: 1000,
+            turn_id: "turn-1",
+            agent_run_id: "run-1",
+            input: { arguments: { day: "Tuesday", time: "2 PM" } },
+            output: { result: "Appointment rescheduled" },
+          },
+        ],
         events: [
           {
             id: "event-1",
@@ -98,6 +149,16 @@ test("seeks the waveform and marks the matching transcript turn", () => {
             started_at: "2026-01-01T12:00:05Z",
             ended_at: null,
             transcript: "I need help",
+            attributes: {},
+          },
+          {
+            id: "turn-empty",
+            external_turn_id: "external-turn-empty",
+            sequence: 2,
+            speaker: "agent",
+            started_at: "2026-01-01T12:00:06Z",
+            ended_at: null,
+            transcript: null,
             attributes: {},
           },
         ],
@@ -153,11 +214,18 @@ test("seeks the waveform and marks the matching transcript turn", () => {
   expect(wave.setTime).toHaveBeenCalledWith(5);
   expect(wave.play).toHaveBeenCalled();
   expect(screen.getByText(/seeking to customer at 0:05/i)).toBeVisible();
+  expect(
+    screen.queryByText(/transcript omitted or not captured/i),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText(/threshold 2.5 s/i)).toBeVisible();
 
   fireEvent.mouseDown(screen.getByRole("tab", { name: "Analysis" }), {
     button: 0,
     ctrlKey: false,
   });
+  expect(screen.getByRole("heading", { name: "Tool calls" })).toBeVisible();
+  expect(screen.getByText("reschedule")).toBeVisible();
+  expect(screen.getByText("1 succeeded")).toBeVisible();
   fireEvent.click(screen.getAllByRole("button", { name: /view turn/i })[0]);
   expect(document.getElementById("turn-turn-1")).toBeTruthy();
 });

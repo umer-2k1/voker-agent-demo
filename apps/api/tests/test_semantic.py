@@ -37,7 +37,9 @@ def semantic_json(
     finding_id = finding_event_id or event_id
     return json.dumps(
         {
-            "intent": "Check order status",
+            "intent": "order_status_lookup",
+            "intent_label": "Check an order's delivery status",
+            "intent_confidence": 0.94,
             "outcome": "success",
             "outcome_source": "inferred",
             "resolution_state": "resolved",
@@ -129,6 +131,8 @@ def database(*, semantic_enabled: bool = True) -> tuple[Session, VoiceSession, P
         ended_at=started + timedelta(seconds=3),
         duration_ms=2000,
         attributes={"customer_ssn": "123-45-6789", "provider": "orders"},
+        input_={"order_id": "123"},
+        output={"delivery_status": "shipped"},
     )
     db.add(span)
     db.flush()
@@ -148,7 +152,9 @@ def database(*, semantic_enabled: bool = True) -> tuple[Session, VoiceSession, P
                 "attributes": {
                     "customer_ssn": "123-45-6789",
                     "authorization": "Bearer hidden",
-                }
+                },
+                "input": {"order_id": "123"},
+                "output": {"delivery_status": "shipped"},
             },
             raw_payload={"secret": "must-not-be-sent"},
         )
@@ -161,7 +167,9 @@ def test_semantic_parser_accepts_fenced_json() -> None:
     result = parse_semantic_result(f"```json\n{semantic_json()}\n```")
 
     assert result.outcome == "success"
-    assert result.intent == "Check order status"
+    assert result.intent == "order_status_lookup"
+    assert result.intent_label == "Check an order's delivery status"
+    assert result.intent_confidence == 0.94
     assert result.findings[0].evidence[1].entity_type == "span"
 
 
@@ -197,6 +205,9 @@ def test_evaluator_evidence_is_bounded_redacted_and_omits_raw_receipts() -> None
     assert "Bearer hidden" not in encoded
     assert "must-not-be-sent" not in encoded
     assert encoded.count("[EXCLUDED]") >= 2
+    assert evidence[1]["entity_type"] == "turn"
+    assert '"order_id": "123"' in encoded
+    assert '"delivery_status": "shipped"' in encoded
 
 
 def test_semantic_evaluator_persists_metrics_mixed_evidence_and_outcome(
@@ -207,6 +218,10 @@ def test_semantic_evaluator_persists_metrics_mixed_evidence_and_outcome(
     monkeypatch.setattr(settings, "semantic_evaluator_provider", "openrouter")
     monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
     monkeypatch.setattr(settings, "openrouter_model", "test/model")
+    voice_session.metadata_ = {
+        "intent": "misleading_upstream_route",
+        "intent_source": "route_tool",
+    }
 
     class Response:
         def raise_for_status(self) -> None:
@@ -243,9 +258,12 @@ def test_semantic_evaluator_persists_metrics_mixed_evidence_and_outcome(
     assert run.cost_micros == 1500
     assert run.evaluator_latency_ms is not None
     assert run.result is not None
-    assert run.result["intent"] == "Check order status"
-    assert voice_session.metadata_["intent"] == "unknown"
-    assert voice_session.metadata_["intent_raw"] == "Check order status"
+    assert run.result["intent"] == "order_status_lookup"
+    assert run.result["intent_label"] == "Check an order's delivery status"
+    assert voice_session.metadata_["intent"] == "order_status_lookup"
+    assert voice_session.metadata_["intent_label"] == "Check an order's delivery status"
+    assert voice_session.metadata_["intent_confidence"] == 0.94
+    assert voice_session.metadata_["intent_source"] == "semantic_model"
     finding = db.scalar(select(Finding))
     assert finding is not None
     assert finding.certainty == "inferred_contributing_factor"
@@ -257,6 +275,8 @@ def test_semantic_evaluator_persists_metrics_mixed_evidence_and_outcome(
     assert "success|failed|escalated|abandoned|uncertain" in captured["json"]["messages"][0][
         "content"
     ]
+    assert "open-domain" in captured["json"]["messages"][0]["content"]
+    assert "keyword or regex classification" in captured["json"]["messages"][0]["content"]
     prompt = captured["json"]["messages"][1]["content"]
     assert "must-not-be-sent" not in prompt
     assert "123-45-6789" not in prompt
@@ -389,6 +409,39 @@ def test_project_setting_persists_disabled_state_without_calling_provider(
     assert run is not None
     assert run.status == "disabled"
     assert run.completed_at is not None
+
+
+def test_semantic_evaluator_never_classifies_from_a_partial_transcript(monkeypatch) -> None:
+    db, voice_session, _project = database()
+    settings = get_settings()
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr(settings, "openrouter_model", "test/model")
+    started = voice_session.started_at
+    for sequence in range(2, 202):
+        db.add(
+            Turn(
+                session_id=voice_session.id,
+                external_turn_id=f"turn-{sequence}",
+                sequence=sequence,
+                speaker="user" if sequence % 2 else "agent",
+                started_at=started + timedelta(seconds=sequence),
+                transcript=f"Conversation turn {sequence}",
+                attributes={},
+            )
+        )
+    db.flush()
+    monkeypatch.setattr(
+        "voker_voice_api.semantic.httpx.post",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("provider called")),
+    )
+
+    assert evaluate_session(db, session_id=voice_session.id) == 0
+    run = db.scalar(select(AnalysisRun))
+    assert run is not None
+    assert run.status == "insufficient_evidence"
+    assert run.result is not None
+    assert run.result["reason"] == "Complete transcript exceeded evaluator evidence limits"
+    assert "intent" not in voice_session.metadata_
 
 
 def test_provider_failure_is_visible_and_does_not_escape_worker_boundary(

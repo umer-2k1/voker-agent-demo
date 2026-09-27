@@ -11,6 +11,7 @@ from voker_voice_api.models import (
     AgentRun,
     AgentVersion,
     Environment,
+    Finding,
     Job,
     Organization,
     OrganizationMember,
@@ -437,6 +438,10 @@ def test_livekit_generated_voice_pipeline_is_accepted_and_nested() -> None:
     llm_span = next(span for span in trace["spans"] if span["kind"] == "llm")
     assert llm_span["duration_ms"] == 800
     assert llm_span["attributes"]["provider"] == "openai"
+    assert trace["tool_summary"] == {"total": 1, "succeeded": 1, "failed": 0}
+    assert trace["tool_calls"][0]["name"] == "lookup_order"
+    assert trace["tool_calls"][0]["input"] == {"arguments": {"order_id": "123"}}
+    assert trace["tool_calls"][0]["output"] == {"result": "shipped"}
     filtered = list_sessions(
         "voice",
         dashboard_user,
@@ -456,6 +461,80 @@ def test_livekit_generated_voice_pipeline_is_accepted_and_nested() -> None:
     setup = project_setup("voice", dashboard_user, db)
     assert setup["last_received_event_at"] is not None
     assert {"stt", "llm", "tool", "tts", "playback"} <= set(setup["observed_stages"])
+
+
+def test_trace_marks_a_legacy_session_with_sequence_gaps_as_incomplete() -> None:
+    db, context = database()
+    started_at = datetime(2026, 9, 21, 10, 0, tzinfo=UTC)
+    persist_event(
+        db,
+        context,
+        event("evt-start", "session.started", started_at, sequence=1),
+    )
+    persist_event(
+        db,
+        context,
+        event(
+            "evt-end",
+            "session.ended",
+            started_at + timedelta(seconds=5),
+            sequence=4,
+            attributes={"expected_last_sequence": 4},
+        ),
+    )
+    session = db.scalar(select(VoiceSession))
+    user = db.scalar(select(User))
+    assert session is not None
+    assert user is not None
+
+    trace = get_session_trace("voice", session.id, user, db)
+
+    assert trace["collection"]["capture_state"] == "incomplete"
+    assert trace["collection"]["highest_seen_sequence"] == 4
+    assert trace["collection"]["highest_contiguous_sequence"] == 1
+    assert trace["collection"]["expected_last_sequence"] == 4
+    assert trace["collection"]["missing_ranges"] == [[2, 3]]
+
+
+def test_trace_reconciles_dead_air_count_with_evidence_backed_findings() -> None:
+    db, context = database()
+    started_at = datetime(2026, 9, 21, 10, 0, tzinfo=UTC)
+    persist_event(
+        db,
+        context,
+        event("evt-start", "session.started", started_at, sequence=1),
+    )
+    persist_event(
+        db,
+        context,
+        event("evt-end", "session.ended", started_at + timedelta(seconds=5), sequence=2),
+    )
+    session = db.scalar(select(VoiceSession))
+    user = db.scalar(select(User))
+    assert session is not None
+    assert user is not None
+    db.add(
+        Finding(
+            session_id=session.id,
+            type="dead_air",
+            certainty="detected_condition",
+            severity="medium",
+            statement="The response gap was 3000 ms.",
+            rule_id="response-gap:test",
+            rule_version="2",
+            attributes={"observed_value": 3000, "threshold": 2500},
+        )
+    )
+    db.flush()
+
+    trace = get_session_trace("voice", session.id, user, db)
+
+    assert trace["voice_behavior"]["dead_air"] == 1
+    assert trace["voice_behavior_sources"]["dead_air"] == {
+        "source": "speech.stopped → playback.started",
+        "threshold_ms": 2500.0,
+        "method": "deterministic response-gap rule",
+    }
 
 
 def test_trace_identifier_is_scoped_by_project_and_environment() -> None:

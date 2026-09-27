@@ -1,5 +1,5 @@
-import json
 import hashlib
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from voker_voice_api.analysis_versions import ANALYSIS_SCHEMA_VERSION, prompt_version_for_job
 from voker_voice_api.config import get_settings
-from voker_voice_api.intents import normalize_intent
 from voker_voice_api.costs import estimate_llm_cost_micros
 from voker_voice_api.models import (
     Agent,
@@ -489,6 +488,8 @@ def persist_event(
     context: IngestContext,
     event: CanonicalEvent,
     session_cache: dict[str, VoiceSession] | None = None,
+    *,
+    enqueue_terminal_analysis: bool = True,
 ) -> str:
     duplicate = db.scalar(
         select(Event.id).where(
@@ -498,7 +499,10 @@ def persist_event(
     if duplicate:
         # Resolve the existing session so a retry is visible in the same session log.
         existing = db.scalar(
-            select(Event).where(Event.project_id == context.project_id, Event.event_id == event.event_id)
+            select(Event).where(
+                Event.project_id == context.project_id,
+                Event.event_id == event.event_id,
+            )
         )
         if existing is not None:
             write_session_log(
@@ -662,7 +666,7 @@ def persist_event(
             session.outcome = outcome
         if isinstance(outcome_source, str):
             session.outcome_source = outcome_source
-        if event.event_type == "session.ended":
+        if event.event_type == "session.ended" and enqueue_terminal_analysis:
             enqueue_completion_analysis(db, context.project_id, session.id)
     elif event.event_type == "outcome.recorded":
         outcome = event.attributes.get("outcome")
@@ -675,17 +679,15 @@ def persist_event(
     elif event.event_type == "intent.detected":
         intent = event.attributes.get("intent")
         if isinstance(intent, str) and intent.strip():
-            normalized_intent = normalize_intent(intent)
             metadata: dict[str, Any] = {
-                "intent": normalized_intent.value,
-                "intent_raw": normalized_intent.raw,
+                "intent_signal": intent.strip(),
             }
             confidence = event.attributes.get("confidence")
             if isinstance(confidence, (int, float)):
-                metadata["intent_confidence"] = round(float(confidence), 3)
-            source = event.attributes.get("source")
-            if isinstance(source, str):
-                metadata["intent_source"] = source
+                metadata["intent_signal_confidence"] = round(float(confidence), 3)
+            intent_source = event.attributes.get("source")
+            if isinstance(intent_source, str):
+                metadata["intent_signal_source"] = intent_source
             session = merge_session_metadata(db, session, metadata)
     return "accepted"
 

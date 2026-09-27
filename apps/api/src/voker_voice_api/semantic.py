@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 
 from voker_voice_api.analysis_versions import ANALYSIS_SCHEMA_VERSION, SEMANTIC_PROMPT_VERSION
 from voker_voice_api.config import get_settings
-from voker_voice_api.intents import normalize_intent
 from voker_voice_api.models import (
     AnalysisRun,
     Event,
@@ -29,8 +28,8 @@ from voker_voice_api.models import Session as VoiceSession
 
 PROMPT_VERSION = SEMANTIC_PROMPT_VERSION
 SCHEMA_VERSION = ANALYSIS_SCHEMA_VERSION
-MAX_EVIDENCE_ITEMS = 100
-MAX_EVIDENCE_CHARS = 48_000
+MAX_EVIDENCE_ITEMS = 200
+MAX_EVIDENCE_CHARS = 96_000
 MAX_EVALUATOR_ATTEMPTS = 2
 DEFAULT_EXCLUSIONS = {
     "api_key",
@@ -45,7 +44,8 @@ DEFAULT_EXCLUSIONS = {
 
 SEMANTIC_SYSTEM_PROMPT = """Return ONLY one JSON object, with no markdown. Analyze only supplied
 evidence. The object must have exactly these fields and types:
-{"intent":"non-empty string","outcome":"success|failed|escalated|abandoned|uncertain",
+{"intent":"stable snake_case key","intent_label":"short human-readable caller goal",
+"intent_confidence":0.0,"outcome":"success|failed|escalated|abandoned|uncertain",
 "outcome_source":"explicit|inferred|unknown",
 "resolution_state":"resolved|unresolved|escalated|abandoned|uncertain",
 "failure_category":null,"summary":"non-empty string","confidence":0.0,
@@ -55,9 +55,19 @@ Each finding, when evidence supports one, must contain: type, statement, severit
 (low|medium|high), confidence (0 through 1), certainty
 (inferred_contributing_factor|detected_condition), evidence as one or more objects in this
 exact shape: {"entity_type":"event|span|turn","entity_id":"a supplied ID"}, and next_step.
-Use uncertain/unknown rather than null for required enums. Never invent evidence IDs. Never claim
-causation; say associated with or observed signal. The session ID is context only and must never be
-cited as evidence; entity_type can only be event, span, or turn."""
+Use uncertain/unknown rather than null for required enums. If the transcript shows the caller
+correcting, rejecting, or expressing frustration with the agent, create an evidence-linked finding
+with a type such as user_frustration or user_correction. Do not infer frustration from a hang-up
+alone. Never invent evidence IDs. Never claim causation; say associated with or observed signal.
+The session ID is context only and must never be cited as evidence; entity_type can only be event,
+span, or turn."""
+
+INTENT_INSTRUCTIONS = """Infer the primary caller intent from the complete supplied evidence,
+especially transcript turns, tool inputs/results, corrections, and handoffs. This product supports
+arbitrary voice-agent domains, so use an open-domain, specific intent. Agent or provider routing
+labels are hints only and may be wrong; never copy one without checking the conversation. Return a
+stable snake_case intent key, a concise human-readable intent_label, and intent_confidence. Do not
+use keyword or regex classification."""
 
 
 class EvidenceReference(BaseModel):
@@ -78,7 +88,9 @@ class SemanticFinding(BaseModel):
 
 
 class SemanticResult(BaseModel):
-    intent: str = Field(min_length=1, max_length=400)
+    intent: str = Field(min_length=2, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")
+    intent_label: str = Field(min_length=2, max_length=120)
+    intent_confidence: float = Field(ge=0, le=1)
     outcome: Literal["success", "failed", "escalated", "abandoned", "uncertain"]
     outcome_source: Literal["explicit", "inferred", "unknown"]
     resolution_state: Literal["resolved", "unresolved", "escalated", "abandoned", "uncertain"]
@@ -165,33 +177,9 @@ def build_evaluator_evidence(
     """Select bounded canonical evidence, never raw provider receipts."""
 
     evidence: list[dict[str, Any]] = []
-    for event in sorted(events, key=_event_priority)[:50]:
-        payload = event.payload
-        evidence.append(
-            {
-                "entity_type": "event",
-                "entity_id": event.event_id,
-                "event_type": event.event_type,
-                "status": event.status,
-                "occurred_at": event.occurred_at.isoformat(),
-                "duration_ms": float(event.duration_ms) if event.duration_ms is not None else None,
-                "attributes": _exclude(payload.get("attributes", {}), exclusions),
-                "error": _exclude(payload.get("error"), exclusions),
-            }
-        )
-    for span in spans[:30]:
-        evidence.append(
-            {
-                "entity_type": "span",
-                "entity_id": span.external_span_id,
-                "kind": span.kind,
-                "name": span.name,
-                "status": span.status,
-                "duration_ms": float(span.duration_ms) if span.duration_ms is not None else None,
-                "attributes": _exclude(span.attributes, exclusions),
-            }
-        )
-    for turn in turns[:20]:
+    # Intent is fundamentally conversational. Put every transcript turn first
+    # so low-level telemetry cannot crowd the caller's goal out of the context.
+    for turn in turns:
         evidence.append(
             {
                 "entity_type": "turn",
@@ -203,12 +191,47 @@ def build_evaluator_evidence(
                 "ended_at": turn.ended_at.isoformat() if turn.ended_at else None,
             }
         )
+    for event in sorted(events, key=_event_priority):
+        payload = event.payload
+        evidence.append(
+            {
+                "entity_type": "event",
+                "entity_id": event.event_id,
+                "event_type": event.event_type,
+                "status": event.status,
+                "occurred_at": event.occurred_at.isoformat(),
+                "duration_ms": float(event.duration_ms) if event.duration_ms is not None else None,
+                "attributes": _exclude(payload.get("attributes", {}), exclusions),
+                "input": _exclude(payload.get("input"), exclusions),
+                "output": _exclude(payload.get("output"), exclusions),
+                "error": _exclude(payload.get("error"), exclusions),
+            }
+        )
+    for span in spans:
+        evidence.append(
+            {
+                "entity_type": "span",
+                "entity_id": span.external_span_id,
+                "kind": span.kind,
+                "name": span.name,
+                "status": span.status,
+                "duration_ms": float(span.duration_ms) if span.duration_ms is not None else None,
+                "attributes": _exclude(span.attributes, exclusions),
+                "input": _exclude(span.input_, exclusions),
+                "output": _exclude(span.output, exclusions),
+            }
+        )
     header = {
         "entity_type": "session_context",
         "entity_id": str(session.id),
         "status": session.status,
         "explicit_outcome": session.outcome,
         "outcome_source": session.outcome_source,
+        "evidence_totals": {
+            "turns": len(turns),
+            "events": len(events),
+            "spans": len(spans),
+        },
     }
     bounded = [header]
     for item in evidence[:MAX_EVIDENCE_ITEMS]:
@@ -216,6 +239,16 @@ def build_evaluator_evidence(
         if len(json.dumps(candidate, default=str, separators=(",", ":"))) > MAX_EVIDENCE_CHARS:
             break
         bounded.append(item)
+    included = {
+        kind: sum(item.get("entity_type") == kind for item in bounded)
+        for kind in ("turn", "event", "span")
+    }
+    header["evidence_included"] = {
+        "turns": included["turn"],
+        "events": included["event"],
+        "spans": included["span"],
+    }
+    header["complete_transcript_included"] = included["turn"] == len(turns)
     return bounded
 
 
@@ -357,11 +390,25 @@ def evaluate_session(
         turns=turns,
         exclusions=exclusions,
     )
+    coverage = evidence[0] if evidence else {}
+    if not coverage.get("complete_transcript_included", False):
+        analysis_run.status = "insufficient_evidence"
+        analysis_run.completed_at = datetime.now(UTC)
+        analysis_run.result = {
+            "reason": "Complete transcript exceeded evaluator evidence limits",
+            "evidence_totals": coverage.get("evidence_totals"),
+            "evidence_included": coverage.get("evidence_included"),
+            "authoritative_summary": None,
+        }
+        return 0
     encoded_evidence = json.dumps(evidence, default=str, separators=(",", ":"))
     started = time.monotonic()
     try:
         messages: list[dict[str, str]] = [
-            {"role": "system", "content": SEMANTIC_SYSTEM_PROMPT},
+            {
+                "role": "system",
+                "content": f"{SEMANTIC_SYSTEM_PROMPT}\n{INTENT_INSTRUCTIONS}",
+            },
             {"role": "user", "content": encoded_evidence},
         ]
         input_tokens = output_tokens = cost_micros = 0
@@ -482,18 +529,19 @@ def evaluate_session(
         if session.outcome is None and result.outcome != "uncertain":
             session.outcome = result.outcome
             session.outcome_source = "semantic"
-        if result.intent and not session.metadata_.get("intent"):
-            normalized_intent = normalize_intent(result.intent)
-            session.metadata_ = {
-                **session.metadata_,
-                "intent": normalized_intent.value,
-                "intent_raw": normalized_intent.raw,
-                "intent_source": "semantic",
-            }
+        session.metadata_ = {
+            **session.metadata_,
+            "intent": result.intent,
+            "intent_label": result.intent_label,
+            "intent_confidence": result.intent_confidence,
+            "intent_source": "semantic_model",
+        }
         analysis_run.status = "completed"
         analysis_run.completed_at = datetime.now(UTC)
         analysis_run.result = {
             "intent": result.intent,
+            "intent_label": result.intent_label,
+            "intent_confidence": result.intent_confidence,
             "outcome": result.outcome,
             "outcome_source": result.outcome_source,
             "resolution_state": result.resolution_state,

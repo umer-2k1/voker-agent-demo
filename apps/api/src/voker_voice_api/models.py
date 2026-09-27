@@ -297,6 +297,93 @@ class Event(Base):
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONValue)
 
 
+class RawEvent(Base):
+    """Immutable event inbox row acknowledged before any projection work."""
+
+    __tablename__ = "raw_events"
+    __table_args__ = (
+        UniqueConstraint("project_id", "event_id", name="uq_raw_event_project_event_id"),
+        UniqueConstraint(
+            "project_id",
+            "environment_id",
+            "external_session_id",
+            "sequence",
+            name="uq_raw_event_session_sequence",
+        ),
+        Index(
+            "ix_raw_events_projection",
+            "project_id",
+            "environment_id",
+            "external_session_id",
+            "projected_at",
+            "sequence",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    environment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("environments.id", ondelete="CASCADE"), nullable=False
+    )
+    external_session_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    sequence: Mapped[int | None] = mapped_column(Integer)
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONValue, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    projected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    projection_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    projection_error: Mapped[str | None] = mapped_column(Text)
+
+
+class SessionCapture(Base):
+    """Delivery and projection high-water marks for one external session."""
+
+    __tablename__ = "session_capture_states"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "environment_id",
+            "external_session_id",
+            name="uq_capture_external_session",
+        ),
+        Index("ix_capture_pending", "state", "projected_generation", "generation"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    environment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("environments.id", ondelete="CASCADE"), nullable=False
+    )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("sessions.id", ondelete="CASCADE")
+    )
+    external_session_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False, default="receiving")
+    highest_seen_sequence: Mapped[int | None] = mapped_column(Integer)
+    highest_contiguous_sequence: Mapped[int | None] = mapped_column(Integer)
+    expected_last_sequence: Mapped[int | None] = mapped_column(Integer)
+    missing_ranges: Mapped[list[list[int]]] = mapped_column(JSONValue, default=list, nullable=False)
+    raw_event_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    projected_event_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    permanent_rejection_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    projected_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    locked_by: Mapped[str | None] = mapped_column(String(255))
+
+
 class Error(Base):
     __tablename__ = "errors"
     __table_args__ = (Index("ix_errors_session_created", "session_id", "created_at"),)

@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     # and `127.0.0.1` are distinct browser sites, so mixing them prevents the
     # browser from sending the signed session cookie to `/auth/me`.
     dashboard_url: str = "http://localhost:5173"
+    mcp_server_url: str = "http://localhost:8001/mcp"
+    mcp_issuer_url: str = "http://localhost:8001"
 
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ROOT / ".env",

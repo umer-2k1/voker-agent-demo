@@ -21,7 +21,7 @@ from voker_voice_api.models import (
     UsageRecord,
 )
 from voker_voice_api.models import Session as VoiceSession
-from voker_voice_api.security import GeneratedAPIKey, generate_ingest_key
+from voker_voice_api.security import GeneratedAPIKey, generate_ingest_key, generate_mcp_key
 
 DEVELOPMENT_ORGANIZATION = "Voker Development"
 DEVELOPMENT_PROJECT_SLUG = "voker-voice"
@@ -103,6 +103,27 @@ def create_ingest_key(
             label=label,
             prefix=generated.prefix,
             secret_hash=generated.secret_hash,
+            scopes=["ingest:write"],
+        )
+    )
+    db.flush()
+    return generated
+
+
+def create_mcp_key(
+    db: Session, *, project: Project, environment: Environment, label: str
+) -> GeneratedAPIKey:
+    """Create a read-only project/environment credential for an MCP host."""
+
+    generated = generate_mcp_key("live" if environment.kind == "production" else "test")
+    db.add(
+        APIKey(
+            project_id=project.id,
+            environment_id=environment.id,
+            label=label,
+            prefix=generated.prefix,
+            secret_hash=generated.secret_hash,
+            scopes=["mcp:read"],
         )
     )
     db.flush()

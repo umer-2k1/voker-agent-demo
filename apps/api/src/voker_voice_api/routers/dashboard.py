@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from voker_voice_api.analysis_versions import ANALYSIS_SCHEMA_VERSION, prompt_version_for_job
 from voker_voice_api.analytics import latency_distribution
-from voker_voice_api.bootstrap import create_ingest_key
+from voker_voice_api.bootstrap import create_ingest_key, create_mcp_key
 from voker_voice_api.config import REPOSITORY_ROOT, get_settings
 from voker_voice_api.connectors import (
     ConnectorError,
@@ -168,6 +168,68 @@ def create_api_key(
     generated = create_ingest_key(db, project=project, environment=environment, label=label)
     db.commit()
     return {"prefix": generated.prefix, "api_key": generated.raw}
+
+
+@router.get("/projects/{project_slug}/mcp-keys")
+def list_mcp_keys(
+    project_slug: str, user: AuthenticatedUser, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """List connection metadata for read-only MCP credentials."""
+
+    project = project_for_slug(db, project_slug, user)
+    keys = db.execute(
+        select(APIKey, Environment)
+        .join(Environment, APIKey.environment_id == Environment.id)
+        .where(APIKey.project_id == project.id, APIKey.scopes.contains(["mcp:read"]))
+        .order_by(APIKey.created_at.desc())
+    ).all()
+    return {
+        "endpoint": get_settings().mcp_server_url,
+        "items": [
+            {
+                "id": str(key.id),
+                "label": key.label,
+                "prefix": key.prefix,
+                "environment": environment.slug,
+                "created_at": timestamp(key.created_at),
+                "last_used_at": timestamp(key.last_used_at),
+                "revoked_at": timestamp(key.revoked_at),
+                "scopes": key.scopes,
+            }
+            for key, environment in keys
+        ],
+    }
+
+
+@router.post("/projects/{project_slug}/mcp-keys", status_code=201)
+def create_mcp_access_key(
+    project_slug: str,
+    user: AuthenticatedUser,
+    payload: dict[str, str] = Body(...),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Create a read-only MCP credential and reveal its secret exactly once."""
+
+    project = project_for_slug(db, project_slug, user)
+    require_project_admin(db, project, user)
+    environment = db.scalar(
+        select(Environment).where(
+            Environment.project_id == project.id,
+            Environment.slug == payload.get("environment", "development"),
+        )
+    )
+    label = payload.get("label", "")
+    if environment is None or not label:
+        raise HTTPException(
+            status_code=422, detail="A valid environment and key label are required"
+        )
+    generated = create_mcp_key(db, project=project, environment=environment, label=label)
+    db.commit()
+    return {
+        "prefix": generated.prefix,
+        "api_key": generated.raw,
+        "endpoint": get_settings().mcp_server_url,
+    }
 
 
 @router.post("/projects/{project_slug}/api-keys/{key_id}/revoke")

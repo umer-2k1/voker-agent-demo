@@ -164,6 +164,36 @@ def test_members_can_read_but_only_owner_or_admin_can_mutate_keys() -> None:
         db.close()
 
 
+def test_owner_can_create_a_read_only_mcp_key_without_changing_ingest_keys() -> None:
+    db, owner, member, _, _, _ = access_database()
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[require_dashboard_user] = lambda: member
+    try:
+        client = TestClient(app, base_url="http://localhost:8001")
+        denied = client.post(
+            "/api/projects/voice/mcp-keys",
+            json={"label": "Codex", "environment": "development"},
+        )
+        assert denied.status_code == 403
+
+        app.dependency_overrides[require_dashboard_user] = lambda: owner
+        created = client.post(
+            "/api/projects/voice/mcp-keys",
+            json={"label": "Codex", "environment": "development"},
+        )
+        assert created.status_code == 201
+        assert created.json()["api_key"].startswith("vkm_test_")
+        assert created.json()["endpoint"].endswith("/mcp")
+
+        listed = client.get("/api/projects/voice/mcp-keys")
+        assert listed.status_code == 200
+        assert listed.json()["items"][0]["prefix"] == created.json()["prefix"]
+        assert listed.json()["items"][0]["scopes"] == ["mcp:read"]
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+
+
 def test_project_overview_reconciles_database_side_span_average() -> None:
     db, owner, _, project, _, environment = access_database()
     started_at = datetime.now(UTC)

@@ -109,6 +109,9 @@ class APIKey(Timestamped, Base):
         ForeignKey("environments.id", ondelete="CASCADE"), nullable=False
     )
     label: Mapped[str] = mapped_column(String(255), nullable=False)
+    scopes: Mapped[list[str]] = mapped_column(
+        JSONValue, default=lambda: ["ingest:write"], nullable=False
+    )
     prefix: Mapped[str] = mapped_column(String(24), unique=True, nullable=False)
     secret_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

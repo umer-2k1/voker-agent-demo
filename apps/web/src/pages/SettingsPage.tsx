@@ -29,6 +29,7 @@ type ApiKey = {
   environment: string;
   revoked_at: string | null;
 };
+type McpKey = ApiKey & { scopes: string[] };
 const createKeySchema = z.object({
   label: z
     .string()
@@ -83,6 +84,8 @@ export function SettingsPage({ account }: { account: Account }) {
   const [projectChoice, setProjectChoice] = useState(defaultProjectSlug);
   const [environmentChoice, setEnvironmentChoice] = useState("development");
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [revealedMcpKey, setRevealedMcpKey] = useState<string | null>(null);
+  const [mcpLabel, setMcpLabel] = useState("");
   const [revokeCandidate, setRevokeCandidate] = useState<ApiKey | null>(null);
   const form = useForm<z.infer<typeof createKeySchema>>({
     resolver: zodResolver(createKeySchema),
@@ -143,6 +146,32 @@ export function SettingsPage({ account }: { account: Account }) {
       setRevokeCandidate(null);
       return void queryClient.invalidateQueries({
         queryKey: ["api-keys", projectSlug],
+      });
+    },
+  });
+  const mcpKeys = useQuery({
+    queryKey: ["mcp-keys", projectSlug],
+    queryFn: () =>
+      request<{ endpoint: string; items: McpKey[] }>(
+        `/api/projects/${projectSlug}/mcp-keys`,
+      ),
+    enabled: Boolean(projectSlug && environment),
+  });
+  const createMcpKey = useMutation({
+    mutationFn: (label: string) =>
+      request<{ api_key: string; endpoint: string }>(
+        `/api/projects/${projectSlug}/mcp-keys`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ label, environment }),
+        },
+      ),
+    onSuccess: (result) => {
+      setRevealedMcpKey(result.api_key);
+      setMcpLabel("");
+      void queryClient.invalidateQueries({
+        queryKey: ["mcp-keys", projectSlug],
       });
     },
   });
@@ -490,6 +519,96 @@ export function SettingsPage({ account }: { account: Account }) {
               </div>
             ) : null}
           </div>
+        </section>
+        <section
+          className="rounded-2xl border border-[#dce8e5] bg-white p-6 shadow-[0_2px_8px_rgb(15_38_34/3%)]"
+          id="mcp-access"
+        >
+          <Eyebrow>MCP access</Eyebrow>
+          <H2 className="mt-2">Connect an AI client</H2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+            Create a read-only key for Codex, Claude, Cursor, or another MCP
+            client. Voker exposes evidence and analytics; your connected client
+            provides the chat experience.
+          </p>
+          {mcpKeys.data?.endpoint ? (
+            <div className="mt-5 rounded-xl border border-[#dce8e5] bg-[#f7faf9] p-4 text-sm">
+              <span className="block text-xs font-bold uppercase tracking-[.12em] text-[#52706a]">
+                Server URL
+              </span>
+              <code className="mt-2 block break-all text-[#254841]">
+                {mcpKeys.data.endpoint}
+              </code>
+            </div>
+          ) : null}
+          {revealedMcpKey ? (
+            <div className="mt-5 grid gap-2 rounded-xl border border-[#f0cc87] bg-[#fff7e9] p-4 text-sm">
+              <b className="text-[#765515]">Copy this MCP key now</b>
+              <code className="break-all text-[#5e491f]">{revealedMcpKey}</code>
+            </div>
+          ) : null}
+          {projectSlug && environment ? (
+            <form
+              className="mt-5 flex flex-col gap-3 rounded-xl bg-[#f4f8f7] p-4 sm:flex-row sm:items-end"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (mcpLabel.trim()) createMcpKey.mutate(mcpLabel.trim());
+              }}
+            >
+              <label className="grid flex-1 gap-1.5 text-sm font-semibold text-[#254841]">
+                MCP key label
+                <Input
+                  aria-label="MCP key label"
+                  placeholder="e.g. My Codex workspace"
+                  value={mcpLabel}
+                  onChange={(event) => setMcpLabel(event.target.value)}
+                />
+              </label>
+              <Button
+                type="submit"
+                disabled={createMcpKey.isPending || !mcpLabel.trim()}
+              >
+                {!createMcpKey.isPending ? <Plus aria-hidden="true" /> : null}
+                {createMcpKey.isPending ? "Creating…" : "Create MCP key"}
+              </Button>
+            </form>
+          ) : null}
+          {createMcpKey.isError ? (
+            <p
+              className="mt-3 text-sm font-semibold text-[#9e3325]"
+              role="alert"
+            >
+              Could not create the MCP key for this project and environment.
+            </p>
+          ) : null}
+          {mcpKeys.data?.items.length ? (
+            <div className="mt-5 overflow-hidden rounded-xl border border-[#dce8e5]">
+              {mcpKeys.data.items.map((key) => (
+                <div
+                  className="grid grid-cols-[30px_minmax(0,1fr)_auto] items-center gap-3 border-b border-[#e7eeec] p-4 last:border-0"
+                  key={key.id}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="grid h-8 w-8 place-items-center rounded-lg bg-[#eaf5f3] text-[#176258]"
+                  >
+                    <KeyRound size={15} strokeWidth={2} />
+                  </span>
+                  <span className="min-w-0">
+                    <b className="block truncate text-sm text-[#254841]">
+                      {key.label}
+                    </b>
+                    <small className="mt-1 block text-xs text-[#829a95]">
+                      {key.prefix} · {key.environment} · read-only
+                    </small>
+                  </span>
+                  <em className="text-xs not-italic text-[#829a95]">
+                    {key.revoked_at ? "Revoked" : "Active"}
+                  </em>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </section>
       </div>
     </div>

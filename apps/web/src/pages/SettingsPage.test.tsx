@@ -78,3 +78,72 @@ test("creates an ingest key for the selected authorized project environment", as
     }),
   );
 });
+
+test("creates and reveals a read-only MCP key without adding a Voker chat UI", async () => {
+  const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url);
+    if (path.endsWith("/api/projects"))
+      return Promise.resolve(
+        jsonResponse({
+          items: [{ id: "project-2", name: "Support", slug: "support" }],
+        }),
+      );
+    if (path.endsWith("/api/projects/support/setup"))
+      return Promise.resolve(
+        jsonResponse({
+          environments: [
+            { id: "environment-2", name: "Staging", slug: "staging" },
+          ],
+        }),
+      );
+    if (path.endsWith("/api/projects/support/api-keys"))
+      return Promise.resolve(jsonResponse({ items: [] }));
+    if (path.endsWith("/api/projects/support/mcp-keys"))
+      return Promise.resolve(
+        init?.method === "POST"
+          ? jsonResponse(
+              {
+                api_key: "vkm_test_once",
+                endpoint: "https://api.voker.ai/mcp",
+              },
+              201,
+            )
+          : jsonResponse({ endpoint: "https://api.voker.ai/mcp", items: [] }),
+      );
+    return Promise.resolve(jsonResponse({ detail: "Project not found" }, 404));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <SettingsPage
+        account={{
+          id: "user-1",
+          email: "owner@example.test",
+          display_name: "Owner",
+        }}
+      />
+    </QueryClientProvider>,
+  );
+
+  await screen.findByText("Connect an AI client");
+  expect(await screen.findByText("https://api.voker.ai/mcp")).toBeVisible();
+  fireEvent.change(screen.getByLabelText("MCP key label"), {
+    target: { value: "Support Codex" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create MCP key" }));
+
+  expect(await screen.findByText("vkm_test_once")).toBeVisible();
+  expect(screen.queryByText("Ask Voker")).not.toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("/api/projects/support/mcp-keys"),
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ label: "Support Codex", environment: "staging" }),
+    }),
+  );
+});

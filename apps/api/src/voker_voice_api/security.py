@@ -25,6 +25,15 @@ def generate_ingest_key(environment: str = "live") -> GeneratedAPIKey:
     return GeneratedAPIKey(raw=raw, prefix=prefix, secret_hash=hash_api_key(raw))
 
 
+def generate_mcp_key(environment: str = "live") -> GeneratedAPIKey:
+    """Generate a read-only credential for a Voker MCP client."""
+
+    secret = secrets.token_urlsafe(32)
+    prefix = f"vkm_{environment}_{secret[:10]}"
+    raw = f"{prefix}_{secret[10:]}"
+    return GeneratedAPIKey(raw=raw, prefix=prefix, secret_hash=hash_api_key(raw))
+
+
 def hash_api_key(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 

@@ -50,6 +50,25 @@ Backend URLs:
 - OpenAPI documentation: <http://localhost:8001/docs>
 - Health check: <http://localhost:8001/health>
 
+### Connect Voker through MCP
+
+Voker exposes a read-only Streamable HTTP MCP endpoint at
+`MCP_SERVER_URL` (locally, `http://localhost:8001/mcp`). In the dashboard,
+open **Settings → MCP access**, create an MCP key for the required environment,
+and copy it once. This key can query Voker sessions, traces, transcripts,
+findings, errors, and analytics; it cannot ingest data or change Voker state.
+
+Use the endpoint and key in your MCP client configuration. The client provides
+the chat interface; Voker only provides tools and evidence. A generic remote
+server configuration is:
+
+```json
+{
+  "url": "https://api.example.com/mcp",
+  "headers": { "Authorization": "Bearer vkm_live_..." }
+}
+```
+
 ### Start the frontend
 
 Open a second terminal in the repository root:

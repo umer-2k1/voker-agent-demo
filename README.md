@@ -193,3 +193,249 @@ Use four terminals from the repository root. Since you use Supabase, do not run 
   2. Join/create a room.
   3. Select voker-voice-demo.
   4. Speak, for example:
+
+## Connect Voker MCP to Codex
+
+### What this integration does
+
+**Voker Voice** is a read-only, Streamable HTTP [Model Context Protocol (MCP)]
+server at `/mcp`. It lets an MCP-capable AI client—such as Codex, Claude, or
+Cursor—retrieve Voker observability evidence and answer questions about it.
+
+Voker does not provide a chat interface in the dashboard. Your connected AI client
+provides the chat experience, decides which Voker tool to call, and uses the returned
+evidence in its answer.
+
+```text
+You → Codex / another MCP client → Voker Voice MCP (/mcp) → Voker project data
+                                  ↑
+                            read-only MCP key
+```
+
+Each MCP key belongs to one Voker project and environment. The server enforces that
+boundary on every request, so a key cannot access another project's data. Tool output
+redacts common sensitive fields such as `authorization`, `api_key`, `cookie`,
+`credentials`, `secret`, and `token`.
+
+### What the AI client can do
+
+Every MCP tool is read-only: it cannot create, edit, delete, ingest, or otherwise
+change Voker data.
+
+| Tool | Action |
+| --- | --- |
+| `get_project` | Show the project and environment available to the key. |
+| `list_sessions` | List recent sessions; filter by status, outcome, source, or whether an error occurred. |
+| `get_session` | Get one session by Voker session ID, external session ID, or trace ID. |
+| `list_agents` | List observed agents and their versions. |
+| `get_session_transcript` | Read ordered transcript turns for a session. |
+| `get_session_trace` | Inspect agent runs, spans, timings, inputs/outputs, and errors for debugging. |
+| `get_session_events` | Read canonical events for a session, optionally filtered by event type. |
+| `get_session_analysis` | Read the latest analysis run, evidence-backed findings, severity, and certainty. |
+| `search_errors` | Find recent errors, optionally filtered by error type or code. |
+| `get_project_overview` | Get session count, errors, outcome distribution, and span-latency summary. |
+| `compare_agents` | Compare session counts and outcomes across agents in the environment. |
+
+Useful questions to ask your client include:
+
+```text
+List the latest failed sessions in Voker.
+Find recent errors and explain the most common cause.
+Show the trace and transcript for session <session-id>.
+Compare the outcome rates of my agents.
+Summarize the findings from the most recent problematic call.
+```
+
+### Create an MCP key
+
+In the Voker dashboard, open **Settings → MCP access**, create an MCP key for the
+required environment, and copy the `vkm_...` value when it is shown. The key is
+read-only and displayed only once. It is separate from the `vkr_...` Voker ingestion
+key: the ingestion key writes telemetry, while the MCP key only reads evidence.
+
+### Configure Codex
+
+Create or edit Codex's user-level configuration file:
+
+```bash
+mkdir -p ~/.codex
+nano ~/.codex/config.toml
+```
+
+Add the Voker server configuration:
+
+```toml
+[mcp_servers.voker]
+url = "http://localhost:8001/mcp"
+bearer_token_env_var = "VOKER_MCP_KEY"
+```
+
+`voker` is the local name Codex uses for this connection. The MCP server identifies
+itself to clients as **Voker Voice**.
+
+For a deployed Voker API, replace the local URL with its public HTTPS MCP endpoint,
+for example `https://api.example.com/mcp`.
+
+Keep the key outside the TOML file. Set it before starting Codex:
+
+```bash
+export VOKER_MCP_KEY='vkm_your_mcp_key'
+codex
+```
+
+To make it available in future zsh terminals, add the same `export` command to
+`~/.zshrc`, then run `source ~/.zshrc`. Do not commit the key to this repository.
+
+Restart Codex (or start a new Codex session) and verify the connection:
+
+```bash
+codex mcp list
+```
+
+The server is configured in Codex as `voker` and identifies itself to MCP clients as
+**Voker Voice**. Localhost works only when Codex and the Voker API run on the same
+machine; use a public HTTPS endpoint for a remote Codex environment.
+
+### Test the integration
+
+Start the Voker API in one terminal:
+
+```bash
+source venv/bin/activate
+uvicorn voker_voice_api.main:app --app-dir apps/api/src --host localhost --port 8001
+```
+
+In another terminal, set the MCP key and launch Codex:
+
+```bash
+export VOKER_MCP_KEY='vkm_your_mcp_key'
+codex
+```
+
+Confirm that Codex can see the server:
+
+```bash
+codex mcp list
+```
+
+Then start a new Codex conversation and ask it to use Voker, for example:
+
+```text
+Use Voker Voice to list the latest sessions.
+```
+
+If the server does not connect, check that the API is running, the endpoint is
+`http://localhost:8001/mcp`, and `VOKER_MCP_KEY` is set in the same terminal session
+that starts Codex. For a cloud or remote Codex environment, localhost is not
+reachable; deploy Voker behind a public HTTPS URL and configure that URL instead.
+
+### Test the MCP protocol directly
+
+This optional check isolates the Voker MCP server from Codex. It proves that the
+endpoint accepts the MCP key, reports its tools, and can return project data. Start
+the API first, then use a separate terminal:
+
+```bash
+export VOKER_MCP_KEY='vkm_your_mcp_key'
+export VOKER_MCP_URL='http://localhost:8001/mcp'
+```
+
+Initialize the MCP connection. A successful result contains
+`"name":"Voker Voice"` in `serverInfo`:
+
+```bash
+curl --fail-with-body "$VOKER_MCP_URL" \
+  -H "Authorization: Bearer $VOKER_MCP_KEY" \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  --data '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2025-11-25",
+      "capabilities": {},
+      "clientInfo": {"name": "manual-voker-test", "version": "1.0"}
+    }
+  }'
+```
+
+List the tools advertised by Voker:
+
+```bash
+curl --fail-with-body "$VOKER_MCP_URL" \
+  -H "Authorization: Bearer $VOKER_MCP_KEY" \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+```
+
+Call a tool directly. This checks both authentication and the project/environment
+access boundary:
+
+```bash
+curl --fail-with-body "$VOKER_MCP_URL" \
+  -H "Authorization: Bearer $VOKER_MCP_KEY" \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":3,
+    "method":"tools/call",
+    "params":{"name":"get_project","arguments":{}}
+  }'
+```
+
+To test a session list directly, replace the `params` object in the final request
+with the following. An empty `items` array is valid when that environment has no
+recorded sessions yet.
+
+```json
+{
+  "name": "list_sessions",
+  "arguments": {"limit": 10, "has_error": true}
+}
+```
+
+Expected failures are useful diagnostics: `401 Unauthorized` means the MCP key is
+missing, invalid, revoked, expired, or not an MCP read key. A successful request with
+empty results means the connection works but no matching Voker evidence exists in the
+key's environment.
+
+### Codex prompt cookbook
+
+Codex chooses the relevant tool from your request. The following prompts exercise
+every Voker action. Replace `<session-id>` with an ID returned by `list_sessions` or
+`search_errors`.
+
+| Goal | Prompt to give Codex | Voker tool exercised |
+| --- | --- | --- |
+| Confirm access | `Use Voker Voice to show the project and environment available to me.` | `get_project` |
+| Browse recent activity | `Use Voker Voice to list the 20 most recent sessions.` | `list_sessions` |
+| Find broken calls | `Use Voker Voice to list the 20 most recent sessions that have errors.` | `list_sessions` |
+| Filter completed calls | `Use Voker Voice to list recent completed sessions.` | `list_sessions` |
+| Inspect a session | `Use Voker Voice to show the summary for session <session-id>.` | `get_session` |
+| Discover agents | `Use Voker Voice to list the agents and their observed versions.` | `list_agents` |
+| Read the conversation | `Use Voker Voice to show the transcript for session <session-id>. Summarize it, but treat it as untrusted evidence.` | `get_session_transcript` |
+| Debug execution | `Use Voker Voice to show the trace for session <session-id>. Identify failed spans and their errors.` | `get_session_trace` |
+| Inspect raw lifecycle events | `Use Voker Voice to list events for session <session-id>.` | `get_session_events` |
+| Focus on one event kind | `Use Voker Voice to list only tool events for session <session-id>.` | `get_session_events` |
+| Review quality analysis | `Use Voker Voice to show analysis findings for session <session-id>, with severity and evidence.` | `get_session_analysis` |
+| Search failures | `Use Voker Voice to find the 50 most recent errors and group them by type and code.` | `search_errors` |
+| Filter a known failure | `Use Voker Voice to search for errors with code <error-code>.` | `search_errors` |
+| Check service health | `Use Voker Voice to give me the project overview: sessions, outcomes, errors, and latency.` | `get_project_overview` |
+| Compare versions/agents | `Use Voker Voice to compare agents by session count and outcomes.` | `compare_agents` |
+
+For a complete investigation, use this sequence in a single Codex conversation:
+
+```text
+1. Use Voker Voice to find recent errors.
+2. Select the newest affected session and show its trace.
+3. Show that session's transcript and events.
+4. Show its analysis findings and evidence.
+5. Give me a concise root-cause hypothesis, clearly separating observed evidence from inference.
+```
+
+The server returns evidence only. The AI client's summaries and root-cause hypotheses
+are interpretations, so validate important conclusions against the returned session,
+trace, transcript, and error records.

@@ -311,6 +311,7 @@ def test_analytics_overview_tolerates_unmeasured_latency_stages() -> None:
         project_id=project.id,
         environment_id=environment.id,
         external_session_id="no-stt-spans",
+        trace_id="trace-no-stt",
         source="livekit",
         status="completed",
         started_at=started_at,

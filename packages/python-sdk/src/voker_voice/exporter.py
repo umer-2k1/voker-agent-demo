@@ -63,7 +63,7 @@ class BackgroundExporter:
         max_queue_size: int = 100_000,
         batch_size: int = 100,
         flush_interval_seconds: float = 0.25,
-        timeout_seconds: float = 30.0,
+        timeout_seconds: float = 120.0,
         shutdown_timeout_seconds: float = 2.0,
         max_retries: int = 1,
         transport: httpx.BaseTransport | None = None,

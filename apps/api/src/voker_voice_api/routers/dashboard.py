@@ -1269,7 +1269,7 @@ def analytics_overview(
     def ratio(numerator: int, denominator: int) -> float | None:
         return numerator / denominator if denominator else None
 
-    stt_sample_size = int(latency.get("stt", {}).get("sample_size", 0))
+    stt_sample_size = int((latency.get("stt") or {}).get("sample_size", 0))
 
     return {
         "filters": {

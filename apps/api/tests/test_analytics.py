@@ -277,3 +277,65 @@ def test_analytics_uses_filtered_aggregates_and_links_representative_sessions() 
     assert result["comparisons"]["models"][0]["label"] == "gpt-4o-mini"
     assert result["comparisons"]["models"][0]["session_ids"]
     assert result["outcome_sources"] == {"explicit": 3, "inferred": 3, "unknown": 0}
+
+
+def test_analytics_overview_tolerates_unmeasured_latency_stages() -> None:
+    """A session with no measurable STT latency must not 500 the endpoint."""
+
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    organization = Organization(name="Sparse metrics")
+    db.add(organization)
+    db.flush()
+    user = User(email="sparse@example.test")
+    db.add(user)
+    db.flush()
+    db.add(
+        OrganizationMember(
+            organization_id=organization.id, user_id=user.id, role="owner"
+        )
+    )
+    project = Project(organization_id=organization.id, name="Voice", slug="sparse")
+    db.add(project)
+    db.flush()
+    environment = Environment(
+        project_id=project.id, name="Development", slug="development", kind="development"
+    )
+    db.add(environment)
+    db.flush()
+    started_at = datetime(2026, 9, 21, 10, 0, tzinfo=UTC)
+    session = VoiceSession(
+        project_id=project.id,
+        environment_id=environment.id,
+        external_session_id="no-stt-spans",
+        source="livekit",
+        status="completed",
+        started_at=started_at,
+        ended_at=started_at + timedelta(seconds=30),
+        metadata_={},
+    )
+    db.add(session)
+    db.flush()
+    # Only an LLM span exists — STT latency is entirely unmeasured.
+    db.add(
+        Span(
+            session_id=session.id,
+            external_span_id="llm-only",
+            name="llm request",
+            kind="llm",
+            status="ok",
+            started_at=started_at,
+            duration_ms=1000,
+            attributes={},
+        )
+    )
+    db.commit()
+
+    result = analytics_overview("sparse", user, db=db)
+
+    assert result["latency"]["stt"] is None
+    assert result["latency"]["llm"]["sample_size"] == 1
+    assert result["metric_coverage"]["stt_latency"] == {"observed": 0, "total": 1}

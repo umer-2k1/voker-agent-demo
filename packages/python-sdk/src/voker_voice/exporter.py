@@ -63,7 +63,7 @@ class BackgroundExporter:
         max_queue_size: int = 100_000,
         batch_size: int = 100,
         flush_interval_seconds: float = 0.25,
-        timeout_seconds: float = 10.0,
+        timeout_seconds: float = 30.0,
         shutdown_timeout_seconds: float = 2.0,
         max_retries: int = 1,
         transport: httpx.BaseTransport | None = None,
@@ -92,6 +92,9 @@ class BackgroundExporter:
         self._closed = False
         self.dropped_events = 0
         self.failed_batches = 0
+        # Consecutive failed deliveries drive exponential backoff so a slow or
+        # wedged API is retried politely instead of hammered every flush tick.
+        self._failure_streak = 0
         self._thread.start()
 
     def emit(self, event: dict[str, Any]) -> None:
@@ -228,6 +231,7 @@ class BackgroundExporter:
                     permanent = set()
                 self._outbox.acknowledge(acknowledged)
                 self._outbox.quarantine(permanent, reason="server rejected event permanently")
+                self._failure_streak = 0
                 retryable = event_ids - acknowledged - permanent
                 if retryable:
                     self._outbox.retry(
@@ -259,7 +263,13 @@ class BackgroundExporter:
                 delay = 0.1 * (2**attempt)
                 time.sleep(delay + random.uniform(0, delay * 0.25))
         self.failed_batches += 1
-        self._outbox.retry(event_ids, reason=final_error, delay_seconds=0.1)
+        self._failure_streak += 1
+        backoff = min(60.0, 2.0 ** min(self._failure_streak, 6))
+        self._outbox.retry(
+            event_ids,
+            reason=final_error,
+            delay_seconds=backoff + random.uniform(0, backoff * 0.25),
+        )
         self._diagnose(
             "export_failed",
             events,

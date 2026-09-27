@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     ingest_max_body_bytes: int = 2_000_000
     ingest_max_events: int = 500
+    # Commit ingested events in bounded chunks so a large batch never holds one
+    # long transaction (and its row locks) across a high-latency connection.
+    ingest_commit_chunk_size: int = 100
     semantic_evaluator_provider: Literal["openrouter", "deepseek"] = "openrouter"
     openrouter_api_key: str | None = None
     openrouter_model: str | None = None

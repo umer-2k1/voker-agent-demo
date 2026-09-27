@@ -104,9 +104,22 @@ async def create_event_batch(
         context = authenticate_ingest_key(
             raw_ingest_key(request, request.headers.get("x-voker-api-key")), db
         )
-        response = accept_event_batch(db, context, batch.events)
-        db.commit()
-        return response
+        chunk_size = max(1, get_settings().ingest_commit_chunk_size)
+        accepted = duplicate = rejected = 0
+        items = []
+        # Commit per chunk: a large batch is several short transactions instead
+        # of one long one, so locks and the pooled connection are released
+        # quickly even over a high-latency (pooled remote) database.
+        for start in range(0, len(batch.events), chunk_size):
+            response = accept_event_batch(db, context, batch.events[start : start + chunk_size])
+            db.commit()
+            accepted += response.accepted
+            duplicate += response.duplicate
+            rejected += response.rejected
+            items.extend(response.items)
+        return EventBatchResponse(
+            accepted=accepted, duplicate=duplicate, rejected=rejected, items=items
+        )
 
     try:
         response = await asyncio.to_thread(persist_batch)

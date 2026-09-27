@@ -18,6 +18,11 @@ def _build_engine() -> Engine:
         # Supabase's transaction pooler (PgBouncer) cannot safely reuse
         # psycopg's named prepared statements across pooled connections.
         engine_options["connect_args"] = {"prepare_threshold": None}
+        # Bound how long a request waits for a pooled connection so a slow or
+        # wedged statement surfaces as a fast error instead of a hang.
+        engine_options.update(
+            pool_size=10, max_overflow=20, pool_timeout=15, pool_recycle=1800
+        )
     return create_engine(database_url, **engine_options)
 
 

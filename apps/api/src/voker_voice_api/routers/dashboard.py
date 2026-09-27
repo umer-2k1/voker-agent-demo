@@ -1002,24 +1002,31 @@ def analytics_overview(
         )
     )
 
-    def intent_label(metadata: Any) -> str:
-        label = metadata.get("intent_label") if isinstance(metadata, dict) else None
-        if isinstance(label, str) and label.strip():
-            return label.strip()
+    def intent_key(metadata: Any) -> str:
+        """Stable grouping key: the normalized intent, never free-text labels."""
         value = metadata.get("intent") if isinstance(metadata, dict) else None
-        if not isinstance(value, str) or not value.strip():
+        return value.strip() if isinstance(value, str) and value.strip() else "unknown"
+
+    def intent_label(key: str) -> str:
+        if key == "unknown":
             return "Unknown intent"
-        return value.replace("_", " ").strip().title()
+        return key.replace("_", " ").strip().title()
 
     intent_buckets: dict[str, dict[str, Any]] = {}
     volume_buckets: dict[str, int] = {}
     trend_buckets: dict[str, dict[str, int]] = {}
     interruption_resolution_points = []
     for row in visual_rows:
-        label = intent_label(row.metadata)
+        key = intent_key(row.metadata)
         intent = intent_buckets.setdefault(
-            label,
-            {"sessions": 0, "known_outcomes": 0, "resolved": 0, "session_ids": []},
+            key,
+            {
+                "label": intent_label(key),
+                "sessions": 0,
+                "known_outcomes": 0,
+                "resolved": 0,
+                "session_ids": [],
+            },
         )
         intent["sessions"] += 1
         if row.outcome is not None:
@@ -1045,7 +1052,7 @@ def analytics_overview(
             interruption_resolution_points.append(
                 {
                     "session_id": str(row.id),
-                    "intent": label,
+                    "intent": intent["label"],
                     "interruptions": int(row.interruptions or 0),
                     "resolution": 1 if row.outcome in resolved_values else 0,
                     "outcome": str(row.outcome),
@@ -1055,7 +1062,6 @@ def analytics_overview(
     intent_comparisons = sorted(
         (
             {
-                "label": label,
                 **bucket,
                 "resolution_rate": (
                     bucket["resolved"] / bucket["known_outcomes"]
@@ -1063,7 +1069,7 @@ def analytics_overview(
                     else None
                 ),
             }
-            for label, bucket in intent_buckets.items()
+            for bucket in intent_buckets.values()
         ),
         key=lambda item: (
             item["resolution_rate"] is not None,

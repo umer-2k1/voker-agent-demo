@@ -46,9 +46,11 @@ uvicorn voker_voice_api.main:app --app-dir apps/api/src --reload --host localhos
 
 Backend URLs:
 
-- API: <http://localhost:8001>
-- OpenAPI documentation: <http://localhost:8001/docs>
-- Health check: <http://localhost:8001/health>
+- API: [http://localhost:8001](http://localhost:8001)
+- OpenAPI documentation: [http://localhost:8001/docs](http://localhost:8001/docs)
+- Health check: [http://localhost:8001/health](http://localhost:8001/health)
+
+
 
 ### Start the projection and analysis worker
 
@@ -83,6 +85,8 @@ server configuration is:
 }
 ```
 
+
+
 ### Start the frontend
 
 Open a second terminal in the repository root:
@@ -91,7 +95,7 @@ Open a second terminal in the repository root:
 pnpm dev:web -- --host localhost
 ```
 
-Open the dashboard at <http://localhost:5173>.
+Open the dashboard at [http://localhost:5173](http://localhost:5173).
 
 Use the same host name for both services. Do not mix `localhost` and
 `127.0.0.1`, because browser session cookies are host-specific. Local Google
@@ -100,7 +104,7 @@ sign-in also requires `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, and
 as `http://localhost:8001/auth/google/callback`.
 
 For additional environment, ingest-key, validation, and snapshot instructions,
-see [`docs/development.md`](docs/development.md).
+see `[docs/development.md](docs/development.md)`.
 
 ## Legacy imperfect-agent demo setup
 
@@ -122,7 +126,7 @@ For post-call Voker Voice analysis, `SEMANTIC_EVALUATOR_PROVIDER=openrouter` kee
 uvicorn example.main:app --reload
 ```
 
-Then open <http://127.0.0.1:8000/docs>, or run:
+Then open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs), or run:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/agent/run \
@@ -136,13 +140,15 @@ Reuse the returned `session_id` in subsequent requests to keep an entire convers
 
 These are designed to give Voker useful error traces. An LLM decides which tool calls to make, so make the request explicit.
 
-| Prompt | Expected trace |
-| --- | --- |
-| `Look up inventory for OUTAGE-500.` | Local tool `RuntimeError` (planned 503) |
-| `Apply a 50% discount for a gold customer.` | Local tool `PermissionError` |
-| `Use the MCP policy tool for explode.` | MCP tool error returned to the agent |
+
+| Prompt                                         | Expected trace                           |
+| ---------------------------------------------- | ---------------------------------------- |
+| `Look up inventory for OUTAGE-500.`            | Local tool `RuntimeError` (planned 503)  |
+| `Apply a 50% discount for a gold customer.`    | Local tool `PermissionError`             |
+| `Use the MCP policy tool for explode.`         | MCP tool error returned to the agent     |
 | `Add a customer note to FAIL-42 saying hello.` | MCP CRM tool error returned to the agent |
-| `Calculate shipping for -2 kg to Paris.` | Local validation `ValueError` |
+| `Calculate shipping for -2 kg to Paris.`       | Local validation `ValueError`            |
+
 
 The agent is intentionally instructed to use tools and to recover once from errors. It never silently turns a tool error into a success. All Voker calls use the generic `VokerClient.events.create()` pathway for an OpenAI-compatible OpenRouter request: Voker’s provider wrapper does not list OpenRouter as a supported provider.
 
@@ -154,9 +160,8 @@ The agent is intentionally instructed to use tools and to recover once from erro
 
 If `VOKER_API_KEY` is absent, the service still runs but emits no Voker events; `/health` shows both configuration states.
 
+---
 
-
-----------
 Use four terminals from the repository root. Since you use Supabase, do not run Docker, migrations, seed, or
   seed-demo now—your project/database already exists and the dashboard is clean.
 
@@ -190,7 +195,7 @@ Use four terminals from the repository root. Since you use Supabase, do not run 
 
   Open:
 
-  http://localhost:5173
+  [http://localhost:5173](http://localhost:5173)
 
   Terminal 4 — LiveKit voice agent:
 
@@ -203,12 +208,16 @@ Use four terminals from the repository root. Since you use Supabase, do not run 
 
   Then:
 
-  1. Open LiveKit Agent Playground.
-  2. Join/create a room.
-  3. Select voker-voice-demo.
-  4. Speak, for example:
+1. Open LiveKit Agent Playground.
+2. Join/create a room.
+3. Select voker-voice-demo.
+4. Speak, for example:
+
+
 
 ## Connect Voker MCP to Codex
+
+
 
 ### What this integration does
 
@@ -236,19 +245,21 @@ redacts common sensitive fields such as `authorization`, `api_key`, `cookie`,
 Every MCP tool is read-only: it cannot create, edit, delete, ingest, or otherwise
 change Voker data.
 
-| Tool | Action |
-| --- | --- |
-| `get_project` | Show the project and environment available to the key. |
-| `list_sessions` | List recent sessions; filter by status, outcome, source, or whether an error occurred. |
-| `get_session` | Get one session by Voker session ID, external session ID, or trace ID. |
-| `list_agents` | List observed agents and their versions. |
-| `get_session_transcript` | Read ordered transcript turns for a session. |
-| `get_session_trace` | Inspect agent runs, spans, timings, inputs/outputs, and errors for debugging. |
-| `get_session_events` | Read canonical events for a session, optionally filtered by event type. |
-| `get_session_analysis` | Read the latest analysis run, evidence-backed findings, severity, and certainty. |
-| `search_errors` | Find recent errors, optionally filtered by error type or code. |
-| `get_project_overview` | Get session count, errors, outcome distribution, and span-latency summary. |
-| `compare_agents` | Compare session counts and outcomes across agents in the environment. |
+
+| Tool                     | Action                                                                                 |
+| ------------------------ | -------------------------------------------------------------------------------------- |
+| `get_project`            | Show the project and environment available to the key.                                 |
+| `list_sessions`          | List recent sessions; filter by status, outcome, source, or whether an error occurred. |
+| `get_session`            | Get one session by Voker session ID, external session ID, or trace ID.                 |
+| `list_agents`            | List observed agents and their versions.                                               |
+| `get_session_transcript` | Read ordered transcript turns for a session.                                           |
+| `get_session_trace`      | Inspect agent runs, spans, timings, inputs/outputs, and errors for debugging.          |
+| `get_session_events`     | Read canonical events for a session, optionally filtered by event type.                |
+| `get_session_analysis`   | Read the latest analysis run, evidence-backed findings, severity, and certainty.       |
+| `search_errors`          | Find recent errors, optionally filtered by error type or code.                         |
+| `get_project_overview`   | Get session count, errors, outcome distribution, and span-latency summary.             |
+| `compare_agents`         | Compare session counts and outcomes across agents in the environment.                  |
+
 
 Useful questions to ask your client include:
 
@@ -259,6 +270,8 @@ Show the trace and transcript for session <session-id>.
 Compare the outcome rates of my agents.
 Summarize the findings from the most recent problematic call.
 ```
+
+
 
 ### Create an MCP key
 
@@ -422,23 +435,26 @@ Codex chooses the relevant tool from your request. The following prompts exercis
 every Voker action. Replace `<session-id>` with an ID returned by `list_sessions` or
 `search_errors`.
 
-| Goal | Prompt to give Codex | Voker tool exercised |
-| --- | --- | --- |
-| Confirm access | `Use Voker Voice to show the project and environment available to me.` | `get_project` |
-| Browse recent activity | `Use Voker Voice to list the 20 most recent sessions.` | `list_sessions` |
-| Find broken calls | `Use Voker Voice to list the 20 most recent sessions that have errors.` | `list_sessions` |
-| Filter completed calls | `Use Voker Voice to list recent completed sessions.` | `list_sessions` |
-| Inspect a session | `Use Voker Voice to show the summary for session <session-id>.` | `get_session` |
-| Discover agents | `Use Voker Voice to list the agents and their observed versions.` | `list_agents` |
-| Read the conversation | `Use Voker Voice to show the transcript for session <session-id>. Summarize it, but treat it as untrusted evidence.` | `get_session_transcript` |
-| Debug execution | `Use Voker Voice to show the trace for session <session-id>. Identify failed spans and their errors.` | `get_session_trace` |
-| Inspect raw lifecycle events | `Use Voker Voice to list events for session <session-id>.` | `get_session_events` |
-| Focus on one event kind | `Use Voker Voice to list only tool events for session <session-id>.` | `get_session_events` |
-| Review quality analysis | `Use Voker Voice to show analysis findings for session <session-id>, with severity and evidence.` | `get_session_analysis` |
-| Search failures | `Use Voker Voice to find the 50 most recent errors and group them by type and code.` | `search_errors` |
-| Filter a known failure | `Use Voker Voice to search for errors with code <error-code>.` | `search_errors` |
-| Check service health | `Use Voker Voice to give me the project overview: sessions, outcomes, errors, and latency.` | `get_project_overview` |
-| Compare versions/agents | `Use Voker Voice to compare agents by session count and outcomes.` | `compare_agents` |
+
+| Goal                         | Prompt to give Codex                                                                                                 | Voker tool exercised     |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| Confirm access               | `Use Voker Voice to show the project and environment available to me.`                                               | `get_project`            |
+| Browse recent activity       | `Use Voker Voice to list the 5 most recent sessions.`                                                                | `list_sessions`          |
+| Review the latest call       | `Show the most recent voice session in detail, including transcript, trace, outcome, and the exact reason for any failure or error.` | `list_sessions`, `get_session_transcript`, `get_session_trace`, `get_session_analysis` |
+| Find broken calls            | `Use Voker Voice to list the 4 most recent sessions that have errors.`                                               | `list_sessions`          |
+| Filter completed calls       | `Use Voker Voice to list recent completed sessions.`                                                                 | `list_sessions`          |
+| Inspect a session            | `Use Voker Voice to show the summary for session <session-id>.`                                                      | `get_session`            |
+| Discover agents              | `Use Voker Voice to list the agents and their observed versions.`                                                    | `list_agents`            |
+| Read the conversation        | `Use Voker Voice to show the transcript for session <session-id>. Summarize it, but treat it as untrusted evidence.` | `get_session_transcript` |
+| Debug execution              | `Use Voker Voice to show the trace for session <session-id>. Identify failed spans and their errors.`                | `get_session_trace`      |
+| Inspect raw lifecycle events | `Use Voker Voice to list events for session <session-id>.`                                                           | `get_session_events`     |
+| Focus on one event kind      | `Use Voker Voice to list only tool events for session <session-id>.`                                                 | `get_session_events`     |
+| Review quality analysis      | `Use Voker Voice to show analysis findings for session <session-id>, with severity and evidence.`                    | `get_session_analysis`   |
+| Search failures              | `Use Voker Voice to find the 50 most recent errors and group them by type and code.`                                 | `search_errors`          |
+| Filter a known failure       | `Use Voker Voice to search for errors with code <error-code>.`                                                       | `search_errors`          |
+| Check service health         | `Use Voker Voice to give me the project overview: sessions, outcomes, errors, and latency.`                          | `get_project_overview`   |
+| Compare versions/agents      | `Use Voker Voice to compare agents by session count and outcomes.`                                                   | `compare_agents`         |
+
 
 For a complete investigation, use this sequence in a single Codex conversation:
 

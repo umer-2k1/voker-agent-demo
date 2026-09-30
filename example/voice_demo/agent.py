@@ -470,6 +470,9 @@ class IntakeAgent(Agent):
 server = AgentServer(
     host=os.getenv("VOICE_DEMO_HOST", "127.0.0.1"),
     port=int(os.getenv("VOICE_DEMO_PORT", "8080")),
+    # macOS starts each job in a fresh spawned process. LiveKit's cold preload can
+    # exceed its 10-second default on this demo's dependency set.
+    initialize_process_timeout=60.0,
 )
 
 
